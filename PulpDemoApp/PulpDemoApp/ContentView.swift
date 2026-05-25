@@ -1,0 +1,152 @@
+import SwiftUI
+import Pulp
+
+struct ContentView: View {
+    @State private var text = """
+# Welcome to Pulp
+
+An inline Markdown editor built as an open-source Swift Package.
+
+## Text Formatting
+
+This editor supports **bold**, *italic*, and ***bold italic*** text. You can also use ~~strikethrough~~ for deleted text and ==highlighted text== for emphasis with a colored background.
+
+## Unordered Lists
+
+- First item
+- Second item
+- Third item with **bold** inside
+
+## Ordered Lists
+
+1. First step
+2. Second step
+3. Third step
+
+## Task Lists
+
+- [ ] Build the tokenizer
+- [x] Set up the Swift Package
+- [ ] Add iOS support
+- [x] Implement marker shrinking
+- [ ] Add syntax highlighting
+
+## Code
+
+Inline code like `let x = 5` gets a background. Fenced code blocks too:
+
+```swift
+struct Note {
+    var title: String
+    var body: String
+    var tags: [String]
+}
+```
+
+## Links and Tags
+
+Visit [Pulp on GitHub](https://github.com/example/pulp) for more info.
+
+Organize with #project and #ideas tags. Nested tags like #work/meetings work too.
+
+## Blockquotes
+
+> Blockquotes get a subtle secondary color.
+> They can span multiple lines.
+
+## Horizontal Rules
+
+Above the line.
+
+---
+
+Below the line.
+
+## Headings
+
+### H3 Heading
+#### H4 Heading
+##### H5 Heading
+###### H6 Heading
+"""
+
+    @State private var derivedTitle = ""
+    @State private var derivedTags: [String] = []
+    @State private var hasTodos = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            headerBar
+            Divider()
+            PulpEditorView(
+                text: $text,
+                delegate: DemoDelegate(
+                    onTitle: { derivedTitle = $0 },
+                    onTags: { derivedTags = $0 },
+                    onTodos: { hasTodos = $0 }
+                )
+            )
+        }
+        .frame(minWidth: 600, minHeight: 400)
+        .onAppear {
+            derivedTitle = ContentAnalyzer.extractTitle(from: text)
+            derivedTags = ContentAnalyzer.extractTags(from: text)
+            hasTodos = text.contains("- [ ]")
+        }
+    }
+
+    private var headerBar: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(derivedTitle.isEmpty ? "Untitled" : derivedTitle)
+                    .font(.headline)
+                HStack(spacing: 6) {
+                    ForEach(derivedTags, id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    if hasTodos {
+                        Text("Has todos")
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+}
+
+final class DemoDelegate: PulpEditorDelegate {
+    let onTitle: (String) -> Void
+    let onTags: ([String]) -> Void
+    let onTodos: (Bool) -> Void
+
+    init(
+        onTitle: @escaping (String) -> Void,
+        onTags: @escaping ([String]) -> Void,
+        onTodos: @escaping (Bool) -> Void
+    ) {
+        self.onTitle = onTitle
+        self.onTags = onTags
+        self.onTodos = onTodos
+    }
+
+    func editor(_ editor: PulpEditorProtocol, didApplyEdit edit: TextEdit) {}
+    func editor(_ editor: PulpEditorProtocol, didUpdateTitle title: String) { onTitle(title) }
+    func editor(_ editor: PulpEditorProtocol, didUpdateTags tags: [String]) { onTags(tags) }
+    func editor(_ editor: PulpEditorProtocol, didUpdateHasUncheckedTodos hasUncheckedTodos: Bool) { onTodos(hasUncheckedTodos) }
+}
+
+#Preview {
+    ContentView()
+}

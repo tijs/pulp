@@ -1,0 +1,16 @@
+--swiftversion 5.9
+--indent 4
+--indentcase false
+--trimwhitespace always
+--voidtype void
+--wraparguments before-first
+--wrapcollections before-first
+--maxwidth 150
+--semicolons never
+--commas always
+--stripunusedargs closure-only
+--header strip
+--ifdef no-indent
+--disable redundantSelf
+--disable trailingClosures
+--exclude .build,PulpDemoApp
