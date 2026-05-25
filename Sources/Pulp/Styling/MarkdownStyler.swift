@@ -262,6 +262,16 @@ public final class MarkdownStyler {
         switch token.type {
         case .listItem, .taskItem, .orderedListItem, .horizontalRule:
             []
+        case .codeBlock:
+            token.markerRanges.map { markerRange in
+                StyleRun(
+                    range: markerRange,
+                    attributes: [
+                        .font: theme.codeFont(),
+                        .foregroundColor: PulpColor.clear,
+                    ]
+                )
+            }
         default:
             token.markerRanges.map { markerRange in
                 StyleRun(

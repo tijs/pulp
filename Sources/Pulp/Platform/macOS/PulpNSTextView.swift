@@ -96,6 +96,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         fatalError("Use init(theme:)")
     }
 
+    public override func layout() {
+        super.layout()
+        updateDrawingInfo()
+    }
+
     private func configureTextContainer() {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
@@ -211,12 +216,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                             .font: theme.headingFont(level: headingLevel(token)),
                             .foregroundColor: theme.secondaryTextColor,
                         ], range: clipped)
-                    case .listItem, .taskItem, .orderedListItem:
+                    case .listItem, .taskItem, .orderedListItem, .horizontalRule:
                         break
                     case .codeBlock:
-                        break
-                    case .horizontalRule:
-                        break
+                        textStorage.addAttributes([
+                            .font: PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.8, weight: .regular),
+                            .foregroundColor: theme.secondaryTextColor,
+                        ], range: clipped)
                     default:
                         textStorage.addAttributes([
                             .font: PulpFont.systemFont(ofSize: theme.bodySize * 0.85),
