@@ -160,6 +160,24 @@ public final class MarkdownStyler {
 
         case .listItem:
             return listItemRuns(token: token)
+
+        case .table:
+            return []
+
+        case .tableHeaderRow:
+            return tableRowRuns(token: token, isHeader: true)
+
+        case .tableSeparatorRow:
+            return [StyleRun(
+                range: token.range,
+                attributes: [
+                    .font: theme.markerFont(),
+                    .foregroundColor: PulpColor.clear,
+                ]
+            )]
+
+        case .tableDataRow:
+            return tableRowRuns(token: token, isHeader: false)
         }
     }
 
@@ -231,6 +249,34 @@ public final class MarkdownStyler {
         return runs
     }
 
+    private func tableRowRuns(token: MarkdownToken, isHeader: Bool) -> [StyleRun] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.paragraphSpacing = 0
+
+        var runs: [StyleRun] = []
+
+        let font = isHeader
+            ? PulpFont.monospacedSystemFont(ofSize: theme.bodySize, weight: .semibold)
+            : PulpFont.monospacedSystemFont(ofSize: theme.bodySize, weight: .regular)
+
+        runs.append(StyleRun(
+            range: token.range,
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraphStyle,
+            ]
+        ))
+
+        for pipeRange in token.markerRanges {
+            runs.append(StyleRun(
+                range: pipeRange,
+                attributes: [.foregroundColor: theme.secondaryTextColor]
+            ))
+        }
+
+        return runs
+    }
+
     private func orderedListRuns(token: MarkdownToken) -> [StyleRun] {
         let indent: CGFloat = 28
         let paragraphStyle = NSMutableParagraphStyle()
@@ -260,7 +306,8 @@ public final class MarkdownStyler {
 
     private func markerRuns(for token: MarkdownToken) -> [StyleRun] {
         switch token.type {
-        case .listItem, .taskItem, .orderedListItem, .horizontalRule:
+        case .listItem, .taskItem, .orderedListItem, .horizontalRule,
+             .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
             []
         case .codeBlock:
             token.markerRanges.map { markerRange in

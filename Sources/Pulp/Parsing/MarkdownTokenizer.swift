@@ -23,6 +23,12 @@ public final class MarkdownTokenizer: Sendable {
         pattern: "(?<=\\s|^)(#[a-zA-Z][a-zA-Z0-9_/]*)",
         options: .anchorsMatchLines
     )
+    private static let tableSeparatorRegex = try! NSRegularExpression(
+        pattern: "^\\|?[\\s-]*\\|[\\s:|-]+\\|?\\s*$"
+    )
+    private static let tableRowRegex = try! NSRegularExpression(
+        pattern: "^\\|.+\\|\\s*$"
+    )
     // swiftlint:enable force_try
 
     public init() {}
@@ -35,12 +41,16 @@ public final class MarkdownTokenizer: Sendable {
         parseFencedCodeBlocks(nsText, into: &tokens, codeBlockRanges: &codeBlockRanges)
 
         let lines = splitLines(nsText)
+        var tableRanges: [NSRange] = []
+        parseTables(lines: lines, codeBlockRanges: codeBlockRanges, into: &tokens, tableRanges: &tableRanges)
+
         for line in lines {
             if isInsideCodeBlock(line.range, codeBlockRanges: codeBlockRanges) { continue }
+            if isInsideTable(line.range, tableRanges: tableRanges) { continue }
             parseBlockLevel(nsText, line: line, into: &tokens)
         }
 
-        parseInlineElements(nsText, excluding: codeBlockRanges, into: &tokens)
+        parseInlineElements(nsText, excluding: codeBlockRanges + tableRanges, into: &tokens)
 
         tokens.sort { $0.range.location < $1.range.location }
         return tokens
@@ -101,6 +111,108 @@ public final class MarkdownTokenizer: Sendable {
 
     private func isInsideCodeBlock(_ range: NSRange, codeBlockRanges: [NSRange]) -> Bool {
         codeBlockRanges.contains { NSIntersectionRange($0, range).length > 0 }
+    }
+
+    private func isInsideTable(_ range: NSRange, tableRanges: [NSRange]) -> Bool {
+        tableRanges.contains { NSIntersectionRange($0, range).length > 0 }
+    }
+
+    // MARK: - Table Parsing
+
+    private func parseTables(
+        lines: [Line],
+        codeBlockRanges: [NSRange],
+        into tokens: inout [MarkdownToken],
+        tableRanges: inout [NSRange]
+    ) {
+        var i = 0
+        while i < lines.count {
+            if isInsideCodeBlock(lines[i].range, codeBlockRanges: codeBlockRanges) {
+                i += 1
+                continue
+            }
+
+            guard i + 1 < lines.count,
+                  isTableRow(lines[i].content),
+                  isTableSeparator(lines[i + 1].content)
+            else {
+                i += 1
+                continue
+            }
+
+            let columns = countColumns(lines[i].content)
+            let tableStart = lines[i].range.location
+            var tableEnd = lines[i + 1].range.location + lines[i + 1].range.length
+            var pipeRanges: [NSRange] = []
+
+            collectPipeRanges(line: lines[i], into: &pipeRanges)
+            tokens.append(MarkdownToken(
+                type: .tableHeaderRow,
+                range: lines[i].range,
+                markerRanges: pipeRanges
+            ))
+
+            let sepPipes = collectSeparatorMarkers(line: lines[i + 1])
+            tokens.append(MarkdownToken(
+                type: .tableSeparatorRow,
+                range: lines[i + 1].range,
+                markerRanges: sepPipes
+            ))
+
+            var j = i + 2
+            while j < lines.count,
+                  !isInsideCodeBlock(lines[j].range, codeBlockRanges: codeBlockRanges),
+                  isTableRow(lines[j].content) {
+                var rowPipes: [NSRange] = []
+                collectPipeRanges(line: lines[j], into: &rowPipes)
+                tokens.append(MarkdownToken(
+                    type: .tableDataRow,
+                    range: lines[j].range,
+                    markerRanges: rowPipes
+                ))
+                tableEnd = lines[j].range.location + lines[j].range.length
+                j += 1
+            }
+
+            let fullRange = NSRange(location: tableStart, length: tableEnd - tableStart)
+            tokens.append(MarkdownToken(
+                type: .table(columns: columns),
+                range: fullRange,
+                markerRanges: []
+            ))
+            tableRanges.append(fullRange)
+
+            i = j
+        }
+    }
+
+    private func isTableRow(_ content: String) -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count > 2
+    }
+
+    private func isTableSeparator(_ content: String) -> Bool {
+        let range = NSRange(location: 0, length: (content as NSString).length)
+        return Self.tableSeparatorRegex.firstMatch(in: content, range: range) != nil
+    }
+
+    private func countColumns(_ content: String) -> Int {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let inner = trimmed.dropFirst().dropLast()
+        return inner.components(separatedBy: "|").count
+    }
+
+    private func collectPipeRanges(line: Line, into ranges: inout [NSRange]) {
+        let content = line.content as NSString
+        for i in 0 ..< content.length {
+            if content.character(at: i) == Character("|").asciiValue.map(UInt16.init) ?? 0x7C {
+                ranges.append(NSRange(location: line.range.location + i, length: 1))
+            }
+        }
+    }
+
+    private func collectSeparatorMarkers(line: Line) -> [NSRange] {
+        [line.range]
     }
 
     // MARK: - Block-Level Parsing

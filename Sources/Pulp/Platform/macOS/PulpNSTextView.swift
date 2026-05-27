@@ -96,7 +96,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         fatalError("Use init(theme:)")
     }
 
-    public override func layout() {
+    override public func layout() {
         super.layout()
         updateDrawingInfo()
     }
@@ -181,8 +181,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
-            {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -216,8 +215,14 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                             .font: theme.headingFont(level: headingLevel(token)),
                             .foregroundColor: theme.secondaryTextColor,
                         ], range: clipped)
-                    case .listItem, .taskItem, .orderedListItem, .horizontalRule:
+                    case .listItem, .taskItem, .orderedListItem, .horizontalRule,
+                         .table, .tableHeaderRow, .tableDataRow:
                         break
+                    case .tableSeparatorRow:
+                        textStorage.addAttributes([
+                            .font: PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.7, weight: .regular),
+                            .foregroundColor: theme.secondaryTextColor,
+                        ], range: clipped)
                     case .codeBlock:
                         textStorage.addAttributes([
                             .font: PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.8, weight: .regular),
@@ -301,6 +306,10 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                         checked: checked
                     ))
                 }
+            case .table:
+                if let tableInfo = tableDrawingInfo(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                    info.tableInfos.append(tableInfo)
+                }
             default:
                 break
             }
@@ -308,6 +317,36 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
 
         textView.drawingInfo = info
         textView.needsDisplay = true
+    }
+
+    private func tableDrawingInfo(
+        for token: MarkdownToken,
+        layoutManager: NSLayoutManager,
+        containerOrigin: NSPoint
+    ) -> DrawingInfo.TableInfo? {
+        guard let bgRect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) else {
+            return nil
+        }
+
+        var headerRect: NSRect?
+        var separatorY: CGFloat?
+
+        for otherToken in cachedTokens {
+            guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
+
+            if case .tableHeaderRow = otherToken.type {
+                if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                    headerRect = rect
+                }
+            }
+            if case .tableSeparatorRow = otherToken.type {
+                if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                    separatorY = rect.maxY
+                }
+            }
+        }
+
+        return .init(backgroundRect: bgRect, headerRect: headerRect, separatorY: separatorY)
     }
 
     private func codeBlockRect(
@@ -381,15 +420,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -407,9 +444,41 @@ class PulpInternalTextView: NSTextView {
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
 
+        let theme = drawingInfo.theme
+
         for blockRect in drawingInfo.codeBlockRects where blockRect.intersects(rect) {
-            drawingInfo.theme.codeBackgroundColor.setFill()
+            theme.codeBackgroundColor.setFill()
             NSBezierPath(roundedRect: blockRect, xRadius: 8, yRadius: 8).fill()
+        }
+
+        for table in drawingInfo.tableInfos where table.backgroundRect.intersects(rect) {
+            theme.codeBackgroundColor.withAlphaComponent(0.5).setFill()
+            NSBezierPath(roundedRect: table.backgroundRect, xRadius: 6, yRadius: 6).fill()
+
+            if let headerRect = table.headerRect {
+                theme.codeBackgroundColor.setFill()
+                let headerBg = NSRect(
+                    x: table.backgroundRect.origin.x,
+                    y: headerRect.origin.y,
+                    width: table.backgroundRect.width,
+                    height: headerRect.height
+                )
+                let path = NSBezierPath(
+                    roundedRect: headerBg,
+                    xRadius: 6,
+                    yRadius: 6
+                )
+                path.fill()
+            }
+
+            if let sepY = table.separatorY {
+                theme.secondaryTextColor.withAlphaComponent(0.2).setStroke()
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: table.backgroundRect.minX + 8, y: sepY))
+                line.line(to: NSPoint(x: table.backgroundRect.maxX - 8, y: sepY))
+                line.lineWidth = 1
+                line.stroke()
+            }
         }
     }
 
@@ -599,8 +668,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
-        {
+           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
             let indent = extractIndent(from: line)
             let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
             if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -612,8 +680,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         }
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let indent = (line as NSString).substring(with: match.range(at: 1))
             let bullet = (line as NSString).substring(with: match.range(at: 2))
             let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)

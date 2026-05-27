@@ -172,4 +172,68 @@ struct MarkdownTokenizerTests {
         let tags = tokens.filter { $0.type == .hashtag }
         #expect(tags.count == 1)
     }
+
+    @Test func simpleTable() {
+        let text = """
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+        """
+        let tokens = tokenizer.tokenize(text)
+        let tables = tokens.filter { if case .table = $0.type { return true }
+            return false
+        }
+        let headers = tokens.filter { $0.type == .tableHeaderRow }
+        let separators = tokens.filter { $0.type == .tableSeparatorRow }
+        let dataRows = tokens.filter { $0.type == .tableDataRow }
+
+        #expect(tables.count == 1)
+        #expect(headers.count == 1)
+        #expect(separators.count == 1)
+        #expect(dataRows.count == 1)
+
+        if case let .table(columns) = tables[0].type {
+            #expect(columns == 2)
+        }
+    }
+
+    @Test func tableWithMultipleDataRows() {
+        let text = """
+        | Name | Score |
+        |------|-------|
+        | Alice | 95 |
+        | Bob | 87 |
+        | Carol | 92 |
+        """
+        let tokens = tokenizer.tokenize(text)
+        let dataRows = tokens.filter { $0.type == .tableDataRow }
+        #expect(dataRows.count == 3)
+    }
+
+    @Test func tableNotDetectedWithoutSeparator() {
+        let text = """
+        | Not a table |
+        | Just pipes |
+        """
+        let tokens = tokenizer.tokenize(text)
+        let tables = tokens.filter { if case .table = $0.type { return true }
+            return false
+        }
+        #expect(tables.isEmpty)
+    }
+
+    @Test func tableInsideCodeBlockIgnored() {
+        let text = """
+        ```
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+        ```
+        """
+        let tokens = tokenizer.tokenize(text)
+        let tables = tokens.filter { if case .table = $0.type { return true }
+            return false
+        }
+        #expect(tables.isEmpty)
+    }
 }

@@ -16,6 +16,10 @@ public enum MarkdownTokenType: Equatable, Sendable {
     case blockquote
     case listItem
     case horizontalRule
+    case table(columns: Int)
+    case tableHeaderRow
+    case tableSeparatorRow
+    case tableDataRow
 }
 
 public struct MarkdownToken: Equatable, Sendable {
