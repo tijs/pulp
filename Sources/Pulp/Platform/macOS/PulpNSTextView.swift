@@ -181,7 +181,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
+            {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -446,13 +447,15 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -504,42 +507,44 @@ class PulpInternalTextView: NSTextView {
 
     private func drawTable(_ table: DrawingInfo.TableInfo, in dirtyRect: NSRect) {
         let bg = table.backgroundRect
+        let columns = max(1, table.columnLineXs.count + 1)
+        let colWidth = bg.width / CGFloat(columns)
+        let borderColor = drawingInfo.theme.secondaryTextColor.withAlphaComponent(0.12)
 
         // Outer border
-        let borderPath = NSBezierPath(roundedRect: bg, xRadius: 6, yRadius: 6)
-        table.borderColor.setStroke()
+        borderColor.setStroke()
+        let borderPath = NSBezierPath(roundedRect: bg.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
         borderPath.lineWidth = 1
         borderPath.stroke()
 
-        // Header background
+        // Header bottom border (thicker)
         if let headerRect = table.headerRect {
-            drawingInfo.theme.codeBackgroundColor.withAlphaComponent(0.4).setFill()
-            let headerBg = NSRect(
-                x: bg.origin.x + 1,
-                y: headerRect.origin.y,
-                width: bg.width - 2,
-                height: headerRect.height
-            )
-            NSBezierPath(rect: headerBg).fill()
+            drawingInfo.theme.secondaryTextColor.withAlphaComponent(0.2).setStroke()
+            let headerLine = NSBezierPath()
+            headerLine.move(to: NSPoint(x: bg.minX, y: headerRect.maxY))
+            headerLine.line(to: NSPoint(x: bg.maxX, y: headerRect.maxY))
+            headerLine.lineWidth = 1
+            headerLine.stroke()
         }
 
-        table.borderColor.setStroke()
-
-        // Horizontal lines between rows
-        for rowRect in table.rowRects {
+        // Data row dividers
+        borderColor.setStroke()
+        for (i, rowRect) in table.rowRects.enumerated() {
+            if i == 0 { continue }
             let line = NSBezierPath()
-            line.move(to: NSPoint(x: bg.minX, y: rowRect.maxY))
-            line.line(to: NSPoint(x: bg.maxX, y: rowRect.maxY))
+            line.move(to: NSPoint(x: bg.minX + 1, y: rowRect.maxY))
+            line.line(to: NSPoint(x: bg.maxX - 1, y: rowRect.maxY))
             line.lineWidth = 0.5
             line.stroke()
         }
 
-        // Vertical column lines
-        table.borderColor.setStroke()
-        for x in table.columnLineXs {
+        // Equal-width vertical column lines
+        borderColor.setStroke()
+        for col in 1 ..< columns {
+            let x = bg.minX + colWidth * CGFloat(col)
             let line = NSBezierPath()
-            line.move(to: NSPoint(x: x, y: bg.minY + 2))
-            line.line(to: NSPoint(x: x, y: bg.maxY - 2))
+            line.move(to: NSPoint(x: x, y: bg.minY + 1))
+            line.line(to: NSPoint(x: x, y: bg.maxY - 1))
             line.lineWidth = 0.5
             line.stroke()
         }
@@ -711,7 +716,8 @@ extension PulpNSTextView: NSTextViewDelegate {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
+           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
+        {
             let indent = extractIndent(from: line)
             let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
             if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -723,7 +729,8 @@ extension PulpNSTextView: NSTextViewDelegate {
         }
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let indent = (line as NSString).substring(with: match.range(at: 1))
             let bullet = (line as NSString).substring(with: match.range(at: 2))
             let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)
