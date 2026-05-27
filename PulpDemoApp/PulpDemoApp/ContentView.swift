@@ -56,13 +56,21 @@ Organize with #project and #ideas tags. Nested tags like #work/meetings work too
 
 ## Tables
 
-| Feature | Status | Priority |
-|---------|--------|----------|
-| Headings | Done | P0 |
-| Bold/Italic | Done | P0 |
-| Task Lists | Done | P0 |
-| Tables | New | P1 |
-| Syntax Highlighting | Planned | P2 |
+| Feature              | Status  | Priority |
+|----------------------|---------|----------|
+| Headings             | Done    | P0       |
+| Bold/Italic          | Done    | P0       |
+| Task Lists           | Done    | P0       |
+| Tables               | New     | P1       |
+| Syntax Highlighting  | Planned | P2       |
+
+A second table with longer content:
+
+| Name | Description                    | Rating |
+|------|--------------------------------|--------|
+| Pulp | Inline Markdown editor         | 5      |
+| Pear | P2P notes with CRDT sync       | 4      |
+| Bear | Cloud-based notes app          | 5      |
 
 ## Horizontal Rules
 
