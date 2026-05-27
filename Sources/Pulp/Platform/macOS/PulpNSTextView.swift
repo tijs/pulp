@@ -329,24 +329,28 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         }
 
         var headerRect: NSRect?
-        var separatorY: CGFloat?
+        var rowRects: [NSRect] = []
 
         for otherToken in cachedTokens {
             guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
 
-            if case .tableHeaderRow = otherToken.type {
+            switch otherToken.type {
+            case .tableHeaderRow:
                 if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
                     headerRect = rect
+                    rowRects.append(rect)
                 }
-            }
-            if case .tableSeparatorRow = otherToken.type {
+            case .tableDataRow:
                 if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
-                    separatorY = rect.maxY
+                    rowRects.append(rect)
                 }
+            default:
+                break
             }
         }
 
-        return .init(backgroundRect: bgRect, headerRect: headerRect, separatorY: separatorY)
+        let borderColor = theme.secondaryTextColor.withAlphaComponent(0.15)
+        return .init(backgroundRect: bgRect, headerRect: headerRect, rowRects: rowRects, borderColor: borderColor)
     }
 
     private func codeBlockRect(
@@ -452,33 +456,7 @@ class PulpInternalTextView: NSTextView {
         }
 
         for table in drawingInfo.tableInfos where table.backgroundRect.intersects(rect) {
-            theme.codeBackgroundColor.withAlphaComponent(0.5).setFill()
-            NSBezierPath(roundedRect: table.backgroundRect, xRadius: 6, yRadius: 6).fill()
-
-            if let headerRect = table.headerRect {
-                theme.codeBackgroundColor.setFill()
-                let headerBg = NSRect(
-                    x: table.backgroundRect.origin.x,
-                    y: headerRect.origin.y,
-                    width: table.backgroundRect.width,
-                    height: headerRect.height
-                )
-                let path = NSBezierPath(
-                    roundedRect: headerBg,
-                    xRadius: 6,
-                    yRadius: 6
-                )
-                path.fill()
-            }
-
-            if let sepY = table.separatorY {
-                theme.secondaryTextColor.withAlphaComponent(0.2).setStroke()
-                let line = NSBezierPath()
-                line.move(to: NSPoint(x: table.backgroundRect.minX + 8, y: sepY))
-                line.line(to: NSPoint(x: table.backgroundRect.maxX - 8, y: sepY))
-                line.lineWidth = 1
-                line.stroke()
-            }
+            drawTable(table, in: rect)
         }
     }
 
@@ -499,6 +477,39 @@ class PulpInternalTextView: NSTextView {
 
         for item in drawingInfo.checkboxItems where item.rect.intersects(dirtyRect) {
             drawCheckbox(in: item.rect, checked: item.checked, theme: theme)
+        }
+    }
+
+    private func drawTable(_ table: DrawingInfo.TableInfo, in dirtyRect: NSRect) {
+        let bg = table.backgroundRect
+        let theme = drawingInfo.theme
+
+        // Outer border
+        let borderPath = NSBezierPath(roundedRect: bg, xRadius: 6, yRadius: 6)
+        table.borderColor.setStroke()
+        borderPath.lineWidth = 1
+        borderPath.stroke()
+
+        // Header background
+        if let headerRect = table.headerRect {
+            theme.codeBackgroundColor.withAlphaComponent(0.4).setFill()
+            let headerBg = NSRect(
+                x: bg.origin.x + 1,
+                y: headerRect.origin.y,
+                width: bg.width - 2,
+                height: headerRect.height
+            )
+            NSBezierPath(rect: headerBg).fill()
+        }
+
+        // Horizontal lines between rows
+        table.borderColor.setStroke()
+        for rowRect in table.rowRects {
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: bg.minX, y: rowRect.maxY))
+            line.line(to: NSPoint(x: bg.maxX, y: rowRect.maxY))
+            line.lineWidth = 0.5
+            line.stroke()
         }
     }
 

@@ -252,12 +252,14 @@ public final class MarkdownStyler {
     private func tableRowRuns(token: MarkdownToken, isHeader: Bool) -> [StyleRun] {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.paragraphSpacing = 0
+        paragraphStyle.headIndent = 12
+        paragraphStyle.firstLineHeadIndent = 12
 
         var runs: [StyleRun] = []
 
         let font = isHeader
-            ? PulpFont.monospacedSystemFont(ofSize: theme.bodySize, weight: .semibold)
-            : PulpFont.monospacedSystemFont(ofSize: theme.bodySize, weight: .regular)
+            ? PulpFont.systemFont(ofSize: theme.bodySize, weight: .semibold)
+            : PulpFont.systemFont(ofSize: theme.bodySize)
 
         runs.append(StyleRun(
             range: token.range,
@@ -270,7 +272,10 @@ public final class MarkdownStyler {
         for pipeRange in token.markerRanges {
             runs.append(StyleRun(
                 range: pipeRange,
-                attributes: [.foregroundColor: theme.secondaryTextColor]
+                attributes: [
+                    .foregroundColor: PulpColor.clear,
+                    .font: PulpFont.systemFont(ofSize: 1),
+                ]
             ))
         }
 

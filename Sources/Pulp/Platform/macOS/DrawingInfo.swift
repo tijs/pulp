@@ -10,7 +10,8 @@ struct DrawingInfo {
     struct TableInfo {
         let backgroundRect: NSRect
         let headerRect: NSRect?
-        let separatorY: CGFloat?
+        let rowRects: [NSRect]
+        let borderColor: PulpColor
     }
 
     var codeBlockRects: [NSRect] = []
