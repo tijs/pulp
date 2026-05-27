@@ -350,21 +350,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             }
         }
 
-        var columnLineXs: [CGFloat] = []
-        for otherToken in cachedTokens {
-            guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
-            guard case .tableHeaderRow = otherToken.type else { continue }
-
-            for pipeRange in otherToken.markerRanges {
-                let glyphRange = layoutManager.glyphRange(forCharacterRange: pipeRange, actualCharacterRange: nil)
-                let pipeRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer!)
-                let x = pipeRect.midX + containerOrigin.x
-                if x > bgRect.minX + 4, x < bgRect.maxX - 4 {
-                    columnLineXs.append(x)
-                }
-            }
-            break
-        }
+        let columnLineXs = calculateColumnLineXs(
+            token: token,
+            tableLeft: bgRect.minX,
+            tableWidth: bgRect.width
+        )
 
         let borderColor = theme.secondaryTextColor.withAlphaComponent(0.15)
         return .init(
@@ -374,6 +364,41 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             columnLineXs: columnLineXs,
             borderColor: borderColor
         )
+    }
+
+    private func calculateColumnLineXs(
+        token: MarkdownToken,
+        tableLeft: CGFloat,
+        tableWidth: CGFloat
+    ) -> [CGFloat] {
+        let nsText = textView.string as NSString
+        let font = PulpFont.systemFont(ofSize: theme.bodySize * 0.9)
+
+        var allRows: [[String]] = []
+        for otherToken in cachedTokens {
+            guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
+            switch otherToken.type {
+            case .tableHeaderRow, .tableDataRow:
+                let rowContent = nsText.substring(with: otherToken.range)
+                allRows.append(TableCellParser.parseCells(from: rowContent))
+            default:
+                break
+            }
+        }
+
+        let columnWidths = TableCellParser.measureColumnWidths(rows: allRows, font: font, padding: 28)
+        guard columnWidths.count > 1 else { return [] }
+
+        let totalContent = columnWidths.reduce(0, +)
+        let scale = totalContent > 0 ? tableWidth / totalContent : 1.0
+
+        var xs: [CGFloat] = []
+        var x = tableLeft
+        for i in 0 ..< columnWidths.count - 1 {
+            x += columnWidths[i] * scale
+            xs.append(x)
+        }
+        return xs
     }
 
     private func codeBlockRect(

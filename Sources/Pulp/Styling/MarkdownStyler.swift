@@ -258,8 +258,8 @@ public final class MarkdownStyler {
         var runs: [StyleRun] = []
 
         let font = isHeader
-            ? PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.85, weight: .semibold)
-            : PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.85, weight: .regular)
+            ? PulpFont.systemFont(ofSize: theme.bodySize * 0.9, weight: .semibold)
+            : PulpFont.systemFont(ofSize: theme.bodySize * 0.9)
 
         runs.append(StyleRun(
             range: token.range,
