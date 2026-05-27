@@ -54,6 +54,16 @@ Organize with #project and #ideas tags. Nested tags like #work/meetings work too
 > Blockquotes get a subtle secondary color.
 > They can span multiple lines.
 
+## Tables
+
+| Feature | Status | Priority |
+|---------|--------|----------|
+| Headings | Done | P0 |
+| Bold/Italic | Done | P0 |
+| Task Lists | Done | P0 |
+| Tables | New | P1 |
+| Syntax Highlighting | Planned | P2 |
+
 ## Horizontal Rules
 
 Above the line.
