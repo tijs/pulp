@@ -329,8 +329,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             return nil
         }
 
+        let nsText = textView.string as NSString
+        let font = PulpFont.systemFont(ofSize: theme.bodySize * 0.9)
+        let headerFont = PulpFont.systemFont(ofSize: theme.bodySize * 0.9, weight: .semibold)
+
         var headerRect: NSRect?
         var rowRects: [NSRect] = []
+        var rowDataList: [DrawingInfo.TableRowData] = []
 
         for otherToken in cachedTokens {
             guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
@@ -340,65 +345,34 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                 if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
                     headerRect = rect
                     rowRects.append(rect)
+                    let content = nsText.substring(with: otherToken.range)
+                    rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), rect: rect, isHeader: true))
                 }
             case .tableDataRow:
                 if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
                     rowRects.append(rect)
+                    let content = nsText.substring(with: otherToken.range)
+                    rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), rect: rect, isHeader: false))
                 }
             default:
                 break
             }
         }
 
-        let columnLineXs = calculateColumnLineXs(
-            token: token,
-            tableLeft: bgRect.minX,
-            tableWidth: bgRect.width
-        )
+        let allCellRows = rowDataList.map(\.cells)
+        let columnWidths = TableCellParser.measureColumnWidths(rows: allCellRows, font: font, padding: 28)
 
-        let borderColor = theme.secondaryTextColor.withAlphaComponent(0.15)
         return .init(
             backgroundRect: bgRect,
             headerRect: headerRect,
             rowRects: rowRects,
-            columnLineXs: columnLineXs,
-            borderColor: borderColor
+            columnWidths: columnWidths,
+            rows: rowDataList,
+            borderColor: theme.secondaryTextColor.withAlphaComponent(0.15),
+            font: font,
+            headerFont: headerFont,
+            textColor: theme.textColor
         )
-    }
-
-    private func calculateColumnLineXs(
-        token: MarkdownToken,
-        tableLeft: CGFloat,
-        tableWidth: CGFloat
-    ) -> [CGFloat] {
-        let nsText = textView.string as NSString
-        let font = PulpFont.systemFont(ofSize: theme.bodySize * 0.9)
-
-        var allRows: [[String]] = []
-        for otherToken in cachedTokens {
-            guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
-            switch otherToken.type {
-            case .tableHeaderRow, .tableDataRow:
-                let rowContent = nsText.substring(with: otherToken.range)
-                allRows.append(TableCellParser.parseCells(from: rowContent))
-            default:
-                break
-            }
-        }
-
-        let columnWidths = TableCellParser.measureColumnWidths(rows: allRows, font: font, padding: 28)
-        guard columnWidths.count > 1 else { return [] }
-
-        let totalContent = columnWidths.reduce(0, +)
-        let scale = totalContent > 0 ? tableWidth / totalContent : 1.0
-
-        var xs: [CGFloat] = []
-        var x = tableLeft
-        for i in 0 ..< columnWidths.count - 1 {
-            x += columnWidths[i] * scale
-            xs.append(x)
-        }
-        return xs
     }
 
     private func codeBlockRect(
@@ -532,7 +506,11 @@ class PulpInternalTextView: NSTextView {
 
     private func drawTable(_ table: DrawingInfo.TableInfo, in dirtyRect: NSRect) {
         let bg = table.backgroundRect
-        let borderColor = drawingInfo.theme.secondaryTextColor.withAlphaComponent(0.12)
+        let borderColor = table.borderColor
+        let totalContentWidth = table.columnWidths.reduce(0, +)
+        guard totalContentWidth > 0 else { return }
+
+        let scale = bg.width / totalContentWidth
 
         // Outer border
         borderColor.setStroke()
@@ -540,7 +518,7 @@ class PulpInternalTextView: NSTextView {
         borderPath.lineWidth = 1
         borderPath.stroke()
 
-        // Header bottom border (thicker, distinct)
+        // Header bottom border
         if let headerRect = table.headerRect {
             drawingInfo.theme.secondaryTextColor.withAlphaComponent(0.25).setStroke()
             let headerLine = NSBezierPath()
@@ -550,25 +528,57 @@ class PulpInternalTextView: NSTextView {
             headerLine.stroke()
         }
 
-        // Data row dividers
-        borderColor.setStroke()
-        for (i, rowRect) in table.rowRects.enumerated() {
-            if i == 0 { continue }
-            let line = NSBezierPath()
-            line.move(to: NSPoint(x: bg.minX + 1, y: rowRect.maxY))
-            line.line(to: NSPoint(x: bg.maxX - 1, y: rowRect.maxY))
-            line.lineWidth = 0.5
-            line.stroke()
+        // Row dividers + cell content
+        for (rowIndex, row) in table.rows.enumerated() {
+            let rowRect = row.rect
+
+            // Row divider (skip first row)
+            if rowIndex > 0 {
+                borderColor.setStroke()
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: bg.minX + 1, y: rowRect.origin.y))
+                line.line(to: NSPoint(x: bg.maxX - 1, y: rowRect.origin.y))
+                line.lineWidth = 0.5
+                line.stroke()
+            }
+
+            // Draw cell content at calculated column positions
+            let font = row.isHeader ? table.headerFont : table.font
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: table.textColor,
+            ]
+
+            var cellX = bg.minX
+            for (colIndex, cell) in row.cells.enumerated() {
+                let colWidth = colIndex < table.columnWidths.count
+                    ? table.columnWidths[colIndex] * scale
+                    : 0
+
+                let cellTextRect = NSRect(
+                    x: cellX + 10,
+                    y: rowRect.origin.y + (rowRect.height - font.pointSize) / 2 - 2,
+                    width: max(0, colWidth - 20),
+                    height: font.pointSize + 4
+                )
+                (cell as NSString).draw(in: cellTextRect, withAttributes: attrs)
+
+                cellX += colWidth
+            }
         }
 
-        // Vertical column lines at pipe positions (content-proportional)
+        // Vertical column lines
         borderColor.setStroke()
-        for x in table.columnLineXs {
-            let line = NSBezierPath()
-            line.move(to: NSPoint(x: x, y: bg.minY + 1))
-            line.line(to: NSPoint(x: x, y: bg.maxY - 1))
-            line.lineWidth = 0.5
-            line.stroke()
+        var colX = bg.minX
+        for (i, width) in table.columnWidths.enumerated() {
+            colX += width * scale
+            if i < table.columnWidths.count - 1 {
+                let line = NSBezierPath()
+                line.move(to: NSPoint(x: colX, y: bg.minY + 1))
+                line.line(to: NSPoint(x: colX, y: bg.maxY - 1))
+                line.lineWidth = 0.5
+                line.stroke()
+            }
         }
     }
 

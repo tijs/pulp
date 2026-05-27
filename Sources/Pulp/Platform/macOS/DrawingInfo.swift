@@ -11,8 +11,18 @@ struct DrawingInfo {
         let backgroundRect: NSRect
         let headerRect: NSRect?
         let rowRects: [NSRect]
-        let columnLineXs: [CGFloat]
+        let columnWidths: [CGFloat]
+        let rows: [TableRowData]
         let borderColor: PulpColor
+        let font: PulpFont
+        let headerFont: PulpFont
+        let textColor: PulpColor
+    }
+
+    struct TableRowData {
+        let cells: [String]
+        let rect: NSRect
+        let isHeader: Bool
     }
 
     var codeBlockRects: [NSRect] = []

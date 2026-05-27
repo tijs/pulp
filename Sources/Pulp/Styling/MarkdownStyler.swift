@@ -162,7 +162,10 @@ public final class MarkdownStyler {
             return listItemRuns(token: token)
 
         case .table:
-            return []
+            return [StyleRun(
+                range: token.range,
+                attributes: [.foregroundColor: PulpColor.clear]
+            )]
 
         case .tableHeaderRow:
             return tableRowRuns(token: token, isHeader: true)
