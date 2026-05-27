@@ -274,7 +274,6 @@ public final class MarkdownStyler {
                 range: pipeRange,
                 attributes: [
                     .foregroundColor: PulpColor.clear,
-                    .font: PulpFont.systemFont(ofSize: 1),
                 ]
             ))
         }

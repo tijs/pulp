@@ -349,8 +349,30 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             }
         }
 
+        var columnLineXs: [CGFloat] = []
+        for otherToken in cachedTokens {
+            guard NSIntersectionRange(otherToken.range, token.range).length > 0 else { continue }
+            guard case .tableHeaderRow = otherToken.type else { continue }
+
+            for pipeRange in otherToken.markerRanges {
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: pipeRange, actualCharacterRange: nil)
+                let pipeRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer!)
+                let x = pipeRect.midX + containerOrigin.x
+                if x > bgRect.minX + 4, x < bgRect.maxX - 4 {
+                    columnLineXs.append(x)
+                }
+            }
+            break
+        }
+
         let borderColor = theme.secondaryTextColor.withAlphaComponent(0.15)
-        return .init(backgroundRect: bgRect, headerRect: headerRect, rowRects: rowRects, borderColor: borderColor)
+        return .init(
+            backgroundRect: bgRect,
+            headerRect: headerRect,
+            rowRects: rowRects,
+            columnLineXs: columnLineXs,
+            borderColor: borderColor
+        )
     }
 
     private func codeBlockRect(
@@ -482,7 +504,6 @@ class PulpInternalTextView: NSTextView {
 
     private func drawTable(_ table: DrawingInfo.TableInfo, in dirtyRect: NSRect) {
         let bg = table.backgroundRect
-        let theme = drawingInfo.theme
 
         // Outer border
         let borderPath = NSBezierPath(roundedRect: bg, xRadius: 6, yRadius: 6)
@@ -492,7 +513,7 @@ class PulpInternalTextView: NSTextView {
 
         // Header background
         if let headerRect = table.headerRect {
-            theme.codeBackgroundColor.withAlphaComponent(0.4).setFill()
+            drawingInfo.theme.codeBackgroundColor.withAlphaComponent(0.4).setFill()
             let headerBg = NSRect(
                 x: bg.origin.x + 1,
                 y: headerRect.origin.y,
@@ -502,12 +523,23 @@ class PulpInternalTextView: NSTextView {
             NSBezierPath(rect: headerBg).fill()
         }
 
-        // Horizontal lines between rows
         table.borderColor.setStroke()
+
+        // Horizontal lines between rows
         for rowRect in table.rowRects {
             let line = NSBezierPath()
             line.move(to: NSPoint(x: bg.minX, y: rowRect.maxY))
             line.line(to: NSPoint(x: bg.maxX, y: rowRect.maxY))
+            line.lineWidth = 0.5
+            line.stroke()
+        }
+
+        // Vertical column lines
+        table.borderColor.setStroke()
+        for x in table.columnLineXs {
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: x, y: bg.minY + 2))
+            line.line(to: NSPoint(x: x, y: bg.maxY - 2))
             line.lineWidth = 0.5
             line.stroke()
         }

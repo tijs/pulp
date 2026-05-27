@@ -11,6 +11,7 @@ struct DrawingInfo {
         let backgroundRect: NSRect
         let headerRect: NSRect?
         let rowRects: [NSRect]
+        let columnLineXs: [CGFloat]
         let borderColor: PulpColor
     }
 
