@@ -49,12 +49,12 @@ public struct PulpTheme: Sendable {
         tertiaryTextColor: PulpColor = PulpPalette.tertiaryLabel,
         backgroundColor: PulpColor = PulpPalette.editorBackground,
         codeBackgroundColor: PulpColor = PulpPalette.fill(0.06),
-        tableHeaderBackground: PulpColor = PulpPalette.pearGreenSoft,
+        tableHeaderBackground: PulpColor = PulpPalette.fill(0.08),
         tableRowStripeBackground: PulpColor = PulpPalette.fill(0.04),
         borderColor: PulpColor = PulpPalette.fill(0.12),
         strongBorderColor: PulpColor = PulpPalette.fill(0.25),
-        accentColor: PulpColor = PulpPalette.pearGreen,
-        checkboxTintColor: PulpColor = PulpPalette.pearGreen,
+        accentColor: PulpColor = PulpPalette.accent,
+        checkboxTintColor: PulpColor = PulpPalette.accent,
         highlightColor: PulpColor = PulpColor.systemYellow.withAlphaComponent(0.3)
     ) {
         self.fontFamily = fontFamily

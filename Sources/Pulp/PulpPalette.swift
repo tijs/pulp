@@ -53,20 +53,14 @@ public enum PulpPalette {
         label.withAlphaComponent(alpha)
     }
 
-    /// Pear-green brand accent. A muted, natural green (not the vibrant system green),
-    /// brighter in dark mode for contrast. Used for links, bullets, checkboxes.
-    public static let pearGreen: PulpColor = dynamicColor(
-        light: PulpColor(red: 0.36, green: 0.62, blue: 0.38, alpha: 1.0),
-        dark: PulpColor(red: 0.50, green: 0.78, blue: 0.52, alpha: 1.0)
-    )
+    /// A subtle accent wash for header tints etc. — derived from any accent color.
+    public static func accentWash(_ color: PulpColor, alpha: CGFloat = 0.18) -> PulpColor {
+        color.withAlphaComponent(alpha)
+    }
 
-    /// A faint pear-green wash for highlights / accents-as-background.
-    public static let pearGreenSoft: PulpColor = dynamicColor(
-        light: PulpColor(red: 0.36, green: 0.62, blue: 0.38, alpha: 0.18),
-        dark: PulpColor(red: 0.50, green: 0.78, blue: 0.52, alpha: 0.24)
-    )
-
-    static func dynamicColor(light: PulpColor, dark: PulpColor) -> PulpColor {
+    /// Builds a light/dark adaptive color. Exposed so consumers can define brand
+    /// colors that adapt to appearance without reimplementing the platform shim.
+    public static func dynamicColor(light: PulpColor, dark: PulpColor) -> PulpColor {
         #if canImport(AppKit)
         return PulpColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua

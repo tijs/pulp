@@ -98,6 +98,7 @@ Below the line.
             Divider()
             PulpEditorView(
                 text: $text,
+                theme: PearTheme.theme,
                 delegate: DemoDelegate(
                     onTitle: { derivedTitle = $0 },
                     onTags: { derivedTags = $0 },

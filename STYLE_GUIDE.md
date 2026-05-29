@@ -4,6 +4,19 @@ The visual design system for the Pulp Markdown editor. Every rendered element dr
 from these tokens — no inline colors, no magic numbers. This keeps the editor
 coherent and makes theming (light/dark, custom accent) a single source of truth.
 
+## Ownership: Pulp is neutral; the consumer brands it
+
+Pulp is a reusable component. It ships a **neutral default theme** (system accent,
+system semantic colors) so it looks at home in any app. **Branding is the consumer's
+job** — the host app constructs a `PulpTheme` with its own accent and passes it via
+`PulpEditorView(text:theme:)` or `PulpNSTextView(theme:)`.
+
+Pear supplies a pear-green accent. That green is defined in the *consuming app*
+(see `PearTheme` in the demo app), not in the Pulp library — keeping brand identity
+out of the shared component. `PulpPalette.dynamicColor(light:dark:)` is exposed so
+consumers can build appearance-adaptive brand colors without reimplementing the
+platform shim.
+
 ## Principles
 
 1. **Content first.** Chrome defers to text. Borders are hairlines, backgrounds are

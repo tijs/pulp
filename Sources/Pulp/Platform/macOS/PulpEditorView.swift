@@ -35,7 +35,8 @@ public struct PulpEditorView: NSViewRepresentable {
         nsView.isEditable = isEditable
 
         if nsView.theme.bodySize != theme.bodySize ||
-            nsView.theme.markerShrinkSize != theme.markerShrinkSize {
+            nsView.theme.markerShrinkSize != theme.markerShrinkSize
+        {
             nsView.theme = theme
         }
 
