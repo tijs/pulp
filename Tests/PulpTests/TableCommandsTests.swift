@@ -19,6 +19,54 @@ struct TableCommandsTests {
 
     private let sample = "| Name | Status |\n| --- | --- |\n| Alpha | Done |\n| Beta | Todo |"
 
+    /// Two tables separated by a paragraph, followed by a heading. Editing the
+    /// first table must not consume the separating newlines or merge the tables.
+    private let twoTables = """
+    | A | B |
+    | --- | --- |
+    | 1 | 2 |
+
+    Between the tables.
+
+    | C | D |
+    | --- | --- |
+    | 3 | 4 |
+
+    ## After
+    """
+
+    @Test func editingFirstTablePreservesDocumentStructure() {
+        let view = editor(twoTables)
+        // Edit a cell in the first table.
+        let loc = (view.text as NSString).range(of: "1").location
+        view.selectedRange = NSRange(location: loc, length: 0)
+        view.insertTableRowBelow()
+
+        // The paragraph, second table, and heading must all survive intact.
+        #expect(view.text.contains("Between the tables."))
+        #expect(view.text.contains("| C | D |"))
+        #expect(view.text.contains("## After"))
+        // Exactly two tables still tokenize.
+        let tables = MarkdownTokenizer().tokenize(view.text).filter {
+            if case .table = $0.type { return true }
+            return false
+        }
+        #expect(tables.count == 2)
+    }
+
+    @Test func tableTokenRangeExcludesTrailingNewline() {
+        let view = editor("| A | B |\n| --- | --- |\n| 1 | 2 |\n\nNext paragraph.")
+        let tableToken = MarkdownTokenizer().tokenize(view.text).first {
+            if case .table = $0.type { return true }
+            return false
+        }
+        #expect(tableToken != nil)
+        if let range = tableToken?.range {
+            let last = (view.text as NSString).substring(with: range).last
+            #expect(last == "|") // ends at the last cell pipe, not a newline
+        }
+    }
+
     @Test func insertTableIntoEmptyDocument() {
         let view = editor("")
         view.insertTable()

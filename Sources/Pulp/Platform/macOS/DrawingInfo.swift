@@ -19,6 +19,9 @@ struct DrawingInfo {
         let font: PulpFont
         let headerFont: PulpFont
         let textColor: PulpColor
+        /// Display row/column whose text is suppressed because an inline editor
+        /// covers it (avoids drawing the cell text twice). nil when not editing.
+        var editingCell: (displayRow: Int, column: Int)?
     }
 
     struct TableRowData {

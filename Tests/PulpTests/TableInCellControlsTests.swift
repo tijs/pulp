@@ -113,5 +113,80 @@ struct TableInCellControlsTests {
         #expect(titles.contains("Delete Row"))
         #expect(titles.contains("Delete Column"))
     }
+
+    @Test func editingCellSuppressesItsRenderedText() {
+        let view = laidOutEditor()
+        guard let info = view.tableInfosForTesting.first else {
+            Issue.record("table not laid out")
+            return
+        }
+        view.beginEditingCell(at: cellPoint(info, displayRow: 1, column: 0))
+
+        // The drawing info must mark this cell as edited so drawTable skips it
+        // (no doubled text under the field).
+        let edited = view.tableInfosForTesting.first?.editingCell
+        #expect(edited?.displayRow == 1)
+        #expect(edited?.column == 0)
+    }
+
+    @Test func controlPersistsAfterCommit() {
+        let view = laidOutEditor()
+        guard let info = view.tableInfosForTesting.first else {
+            Issue.record("table not laid out")
+            return
+        }
+        view.beginEditingCell(at: cellPoint(info, displayRow: 1, column: 0))
+        view.activeCellEditorValue = "Renamed"
+        view.commitCellEdit()
+        view.layoutForTesting()
+
+        // After committing, the field is gone but the control stays on the cell.
+        #expect(!view.hasActiveCellEditor)
+        #expect(view.tableControlForTesting != nil)
+    }
+
+    @Test func activatingCellShowsControlWithoutEditor() {
+        let view = laidOutEditor()
+        guard let info = view.tableInfosForTesting.first else {
+            Issue.record("table not laid out")
+            return
+        }
+        let activated = view.activateCell(at: cellPoint(info, displayRow: 2, column: 1))
+        #expect(activated)
+        #expect(!view.hasActiveCellEditor)
+        #expect(view.tableControlForTesting != nil)
+    }
+
+    @Test func endTableEditingClearsControl() {
+        let view = laidOutEditor()
+        guard let info = view.tableInfosForTesting.first else {
+            Issue.record("table not laid out")
+            return
+        }
+        view.activateCell(at: cellPoint(info, displayRow: 1, column: 0))
+        view.endTableEditing()
+        view.layoutForTesting()
+        #expect(view.tableControlForTesting == nil)
+    }
+
+    @Test func clickingCellsRepeatedlyKeepsSourceValid() {
+        let view = laidOutEditor()
+        let original = view.text
+        // Simulate clicking around several cells (table has 2 columns) without typing.
+        for (row, col) in [(1, 0), (2, 1), (0, 1), (1, 1), (0, 0)] {
+            guard let info = view.tableInfosForTesting.first else { break }
+            view.beginEditingCell(at: cellPoint(info, displayRow: row, column: col))
+            view.commitCellEdit()
+        }
+        // No typing means no change — and crucially no corruption/merge.
+        #expect(view.text == original)
+        #expect(view.text.contains("# Title"))
+
+        let tables = MarkdownTokenizer().tokenize(view.text).filter {
+            if case .table = $0.type { return true }
+            return false
+        }
+        #expect(tables.count == 1)
+    }
 }
 #endif

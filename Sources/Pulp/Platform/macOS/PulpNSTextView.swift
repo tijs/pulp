@@ -54,6 +54,9 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
     // Inline table cell editing
     private var cellEditor: NSTextField?
     private var cellEditContext: (tableRange: NSRange, rowIndex: Int, columnIndex: Int)?
+    /// The cell whose control button is shown (last clicked / being edited). Drives
+    /// the control independently of the text caret so clicks never move the caret.
+    private var activeCell: (tableRange: NSRange, rowIndex: Int, columnIndex: Int)?
 
     public init(theme: PulpTheme = .default) {
         self.theme = theme
@@ -221,13 +224,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                             .foregroundColor: theme.secondaryTextColor,
                         ], range: clipped)
                     case .listItem, .taskItem, .orderedListItem, .horizontalRule,
-                         .table, .tableHeaderRow, .tableDataRow:
+                         .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
+                        // Table markers stay hidden at all times — revealing the raw
+                        // pipes/separator on caret entry reflows the row and misaligns
+                        // the rendered overlay. Editing happens through the cell editor.
                         break
-                    case .tableSeparatorRow:
-                        textStorage.addAttributes([
-                            .font: PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.7, weight: .regular),
-                            .foregroundColor: theme.secondaryTextColor,
-                        ], range: clipped)
                     case .codeBlock:
                         textStorage.addAttributes([
                             .font: PulpFont.monospacedSystemFont(ofSize: theme.bodySize * 0.8, weight: .regular),
@@ -250,6 +251,9 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
     }
 
     func handleSelectionChange() {
+        // Don't restyle/reflow while an inline cell editor is open — that would
+        // shift the overlay out from under the field.
+        guard cellEditor == nil else { return }
         guard let textStorage = textView.textStorage else { return }
         let string = textStorage.string as NSString
         guard string.length > 0 else { return }
@@ -312,7 +316,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                     ))
                 }
             case .table:
-                if let tableInfo = tableDrawingInfo(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if var tableInfo = tableDrawingInfo(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                    // Suppress the rendered text of the cell currently being edited.
+                    if let ctx = cellEditContext, ctx.tableRange == token.range {
+                        tableInfo.editingCell = (displayRow: ctx.rowIndex < 0 ? 0 : ctx.rowIndex + 1, column: ctx.columnIndex)
+                    }
                     info.tableInfos.append(tableInfo)
                 }
             default:
@@ -326,12 +334,25 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         textView.needsDisplay = true
     }
 
-    /// When the caret sits in a table cell, place a small control button at the
-    /// top-right of that cell. Tapping it opens the table-edit menu.
+    /// The control button is shown for the active cell — the one last clicked (so
+    /// it survives after a cell edit commits) or, failing that, the cell the caret
+    /// sits in (keyboard navigation). Hidden while the inline editor field is open
+    /// (the field covers that cell).
     private func tableControlInfo() -> DrawingInfo.TableControl? {
-        guard isEditable, let ctx = tableCaretContext() else { return nil }
+        guard isEditable, cellEditor == nil else { return nil }
+
+        if let cell = activeCell {
+            return controlButton(tableRange: cell.tableRange, sourceRow: cell.rowIndex, columnIndex: cell.columnIndex)
+        }
+        guard let ctx = tableCaretContext() else { return nil }
+        let sourceRow = ctx.isInHeader ? -1 : ctx.dataRowIndex
+        return controlButton(tableRange: ctx.tableRange, sourceRow: sourceRow, columnIndex: ctx.columnIndex)
+    }
+
+    /// Compute the control button rect for a specific cell (sourceRow -1 = header).
+    private func controlButton(tableRange: NSRange, sourceRow: Int, columnIndex: Int) -> DrawingInfo.TableControl? {
         guard let tableToken = cachedTokens.first(where: {
-            if case .table = $0.type { return $0.range == ctx.tableRange }
+            if case .table = $0.type { return $0.range == tableRange }
             return false
         }) else { return nil }
         guard let layoutManager = textView.layoutManager, textView.textContainer != nil else { return nil }
@@ -348,7 +369,6 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let tableWidth = textView.bounds.width - containerOrigin.x * 2
         let tableTop = unionRect.origin.y + containerOrigin.y
 
-        // Resolve the active row index (header = row 0) and column widths.
         let rowDataCount = cachedTokens.filter {
             guard NSIntersectionRange($0.range, tableToken.range).length > 0 else { return false }
             if case .tableHeaderRow = $0.type { return true }
@@ -356,7 +376,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             return false
         }.count
         let rowHeight = unionRect.height / CGFloat(max(1, rowDataCount))
-        let rowIndex = ctx.isInHeader ? 0 : ctx.dataRowIndex + 1
+        let displayRow = sourceRow < 0 ? 0 : sourceRow + 1
 
         let columnWidths = tableColumnWidths(for: tableToken)
         let totalWidth = columnWidths.reduce(0, +)
@@ -364,12 +384,12 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let scale = tableWidth / totalWidth
 
         var cellX = tableLeft
-        for i in 0 ..< min(ctx.columnIndex, columnWidths.count) {
+        for i in 0 ..< min(columnIndex, columnWidths.count) {
             cellX += columnWidths[i] * scale
         }
-        let colWidth = ctx.columnIndex < columnWidths.count ? columnWidths[ctx.columnIndex] * scale : 0
+        let colWidth = columnIndex < columnWidths.count ? columnWidths[columnIndex] * scale : 0
         let cellRight = cellX + colWidth
-        let cellTop = tableTop + CGFloat(rowIndex) * rowHeight
+        let cellTop = tableTop + CGFloat(displayRow) * rowHeight
 
         let buttonSize: CGFloat = 16
         let buttonRect = NSRect(
@@ -450,6 +470,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         return nil
     }
 
+    /// Open an inline editor over a cell. Does not move the text caret — the cell's
+    /// control state is tracked by `activeCell`, so clicks never reflow the table.
     func beginEditingCell(at point: NSPoint) {
         guard let hit = tableCellHit(at: point) else { return }
         commitCellEdit()
@@ -458,14 +480,31 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let tableMarkdown = nsText.substring(with: hit.tableRange)
         let current = TableEditor.cell(in: tableMarkdown, rowIndex: hit.rowIndex, columnIndex: hit.columnIndex) ?? ""
 
-        let field = NSTextField(frame: hit.cellRect.insetBy(dx: 4, dy: 4))
+        // A neat editing band inside the cell. The rendered cell text is suppressed
+        // (see updateDrawingInfo), so a clean opaque field with an accent outline
+        // is all that shows — no doubled text, no reflow.
+        let cell = hit.cellRect
+        let fieldHeight = min(cell.height - 6, 26)
+        let fieldFrame = NSRect(
+            x: cell.minX + 10,
+            y: cell.midY - fieldHeight / 2,
+            width: max(20, cell.width - 18),
+            height: fieldHeight
+        )
+        let field = NSTextField(frame: fieldFrame)
         field.stringValue = current
         field.font = hit.rowIndex < 0 ? theme.tableHeaderFont() : theme.tableFont()
-        field.isBordered = true
-        field.bezelStyle = .roundedBezel
+        field.isBordered = false
+        field.focusRingType = .none
         field.drawsBackground = true
         field.backgroundColor = theme.backgroundColor
         field.textColor = theme.textColor
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        field.wantsLayer = true
+        field.layer?.cornerRadius = 4
+        field.layer?.borderWidth = 1.5
+        field.layer?.borderColor = theme.accentColor.cgColor
         field.target = self
         field.action = #selector(cellEditorCommitted)
         field.delegate = self
@@ -473,45 +512,25 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         textView.addSubview(field)
         cellEditor = field
         cellEditContext = (hit.tableRange, hit.rowIndex, hit.columnIndex)
+        activeCell = (hit.tableRange, hit.rowIndex, hit.columnIndex)
         window?.makeFirstResponder(field)
-
-        // Also move the text caret into this cell's source so the control button shows.
-        moveCaretIntoCell(tableRange: hit.tableRange, rowIndex: hit.rowIndex, columnIndex: hit.columnIndex)
+        // Suppress the rendered text for the cell being edited (no double draw).
+        updateDrawingInfo()
     }
 
     @objc private func cellEditorCommitted() {
         commitCellEdit()
     }
 
-    /// Position the text caret inside a table cell's source content so the
-    /// table control affordance (which keys off `tableCaretContext`) appears.
-    private func moveCaretIntoCell(tableRange: NSRange, rowIndex: Int, columnIndex: Int) {
-        let nsText = textView.string as NSString
-        let tableMarkdown = nsText.substring(with: tableRange) as NSString
-        // Walk lines to the target row.
-        var lineStartInTable = 0
-        var displayRow = 0
-        var targetLineStart = 0
-        tableMarkdown.enumerateSubstrings(in: NSRange(location: 0, length: tableMarkdown.length), options: [
-            .byLines,
-            .substringNotRequired,
-        ]) { _, lineRange, _, stop in
-            // Skip the separator row (row 1 in display order).
-            let wanted = rowIndex < 0 ? 0 : rowIndex + 2
-            if displayRow == wanted {
-                targetLineStart = lineRange.location
-                stop.pointee = true
-            }
-            displayRow += 1
-            lineStartInTable = lineRange.location
-        }
-        _ = lineStartInTable
-        let caret = tableRange.location + targetLineStart + 2 // after "| "
-        if caret <= nsText.length {
-            isApplyingStyle = true
-            textView.setSelectedRange(NSRange(location: min(caret, nsText.length), length: 0))
-            isApplyingStyle = false
-        }
+    /// Mark a cell as active (showing its control button) without opening the
+    /// inline editor. Returns false if the point isn't inside a table cell.
+    @discardableResult
+    func activateCell(at point: NSPoint) -> Bool {
+        guard let hit = tableCellHit(at: point) else { return false }
+        commitCellEdit()
+        activeCell = (hit.tableRange, hit.rowIndex, hit.columnIndex)
+        updateDrawingInfo()
+        return true
     }
 
     func commitCellEdit() {
@@ -522,7 +541,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         cellEditContext = nil
 
         let nsText = textView.string as NSString
-        guard NSMaxRange(ctx.tableRange) <= nsText.length else { return }
+        guard NSMaxRange(ctx.tableRange) <= nsText.length else {
+            activeCell = nil
+            updateDrawingInfo()
+            return
+        }
         let tableMarkdown = nsText.substring(with: ctx.tableRange)
         let updated = TableEditor.setCell(
             in: tableMarkdown,
@@ -530,8 +553,25 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             columnIndex: ctx.columnIndex,
             value: newValue
         )
-        guard updated != tableMarkdown else { return }
-        applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
+        if updated != tableMarkdown {
+            applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
+            // The table may have changed length; keep the control on this cell.
+            activeCell = (
+                NSRange(location: ctx.tableRange.location, length: (updated as NSString).length),
+                ctx.rowIndex,
+                ctx.columnIndex
+            )
+        }
+        // restyleAll runs async after the edit; refresh the control now too.
+        updateDrawingInfo()
+    }
+
+    /// Dismiss any active cell editor / control (e.g. when clicking outside a table).
+    func endTableEditing() {
+        let wasActive = cellEditor != nil || activeCell != nil
+        commitCellEdit()
+        activeCell = nil
+        if wasActive { updateDrawingInfo() }
     }
 
     // MARK: - Verification Seams
@@ -920,13 +960,17 @@ class PulpInternalTextView: NSTextView {
                     ? table.columnWidths[colIndex] * scale
                     : 0
 
-                let cellTextRect = NSRect(
-                    x: cellX + cellPadding,
-                    y: rect.minY + (rowHeight - textHeight) / 2,
-                    width: max(0, colWidth - cellPadding * 2),
-                    height: textHeight
-                )
-                (cell as NSString).draw(in: cellTextRect, withAttributes: attrs)
+                // Skip the cell currently covered by the inline editor.
+                let isEditing = table.editingCell.map { $0.displayRow == index && $0.column == colIndex } ?? false
+                if !isEditing {
+                    let cellTextRect = NSRect(
+                        x: cellX + cellPadding,
+                        y: rect.minY + (rowHeight - textHeight) / 2,
+                        width: max(0, colWidth - cellPadding * 2),
+                        height: textHeight
+                    )
+                    (cell as NSString).draw(in: cellTextRect, withAttributes: attrs)
+                }
 
                 cellX += colWidth
             }
@@ -1058,6 +1102,8 @@ class PulpInternalTextView: NSTextView {
             }
         }
 
+        // Click landed outside any table cell/control — dismiss table editing.
+        parent.endTableEditing()
         super.mouseDown(with: event)
     }
 
@@ -1067,8 +1113,9 @@ class PulpInternalTextView: NSTextView {
         guard let parent = pulpParent, isEditable else { return super.menu(for: event) }
         let point = convert(event.locationInWindow, from: nil)
 
-        if parent.tableCellHit(at: point) != nil {
-            parent.beginEditingCell(at: point)
+        // Right-click in a cell activates it (control shows) and offers structural
+        // edits — without opening the inline editor.
+        if parent.activateCell(at: point) {
             return parent.makeTableMenu()
         }
 

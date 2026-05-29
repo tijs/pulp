@@ -142,7 +142,6 @@ public final class MarkdownTokenizer: Sendable {
 
             let columns = countColumns(lines[i].content)
             let tableStart = lines[i].range.location
-            var tableEnd = lines[i + 1].range.location + lines[i + 1].range.length
             var pipeRanges: [NSRange] = []
 
             collectPipeRanges(line: lines[i], into: &pipeRanges)
@@ -159,6 +158,7 @@ public final class MarkdownTokenizer: Sendable {
                 markerRanges: sepPipes
             ))
 
+            var lastLineIndex = i + 1
             var j = i + 2
             while j < lines.count,
                   !isInsideCodeBlock(lines[j].range, codeBlockRanges: codeBlockRanges),
@@ -171,10 +171,16 @@ public final class MarkdownTokenizer: Sendable {
                     range: lines[j].range,
                     markerRanges: rowPipes
                 ))
-                tableEnd = lines[j].range.location + lines[j].range.length
+                lastLineIndex = j
                 j += 1
             }
 
+            // The .table range must NOT include the trailing newline of the last
+            // row. Structural rewrites replace this range with canonical markdown
+            // that has no trailing newline; including it would delete the blank
+            // line / separator after the table and merge it into the next block.
+            let tableEnd = lines[lastLineIndex].range.location
+                + contentLengthExcludingTrailingNewlines(lines[lastLineIndex])
             let fullRange = NSRange(location: tableStart, length: tableEnd - tableStart)
             tokens.append(MarkdownToken(
                 type: .table(columns: columns),
@@ -185,6 +191,18 @@ public final class MarkdownTokenizer: Sendable {
 
             i = j
         }
+    }
+
+    /// UTF-16 length of a line's content with any trailing newline characters removed.
+    private func contentLengthExcludingTrailingNewlines(_ line: Line) -> Int {
+        let ns = line.content as NSString
+        var length = ns.length
+        while length > 0 {
+            let c = ns.character(at: length - 1)
+            guard c == 0x0A || c == 0x0D else { break }
+            length -= 1
+        }
+        return length
     }
 
     private func isTableRow(_ content: String) -> Bool {
