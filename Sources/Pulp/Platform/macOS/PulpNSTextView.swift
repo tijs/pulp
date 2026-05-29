@@ -51,6 +51,10 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
     private var _derivedTags: [String] = []
     private var _hasUncheckedTodos = false
 
+    // Inline table cell editing
+    private var cellEditor: NSTextField?
+    private var cellEditContext: (tableRange: NSRange, rowIndex: Int, columnIndex: Int)?
+
     public init(theme: PulpTheme = .default) {
         self.theme = theme
         self.styler = MarkdownStyler(theme: theme)
@@ -181,7 +185,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
+            {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -315,8 +320,278 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
             }
         }
 
+        info.tableControl = tableControlInfo()
+
         textView.drawingInfo = info
         textView.needsDisplay = true
+    }
+
+    /// When the caret sits in a table cell, place a small control button at the
+    /// top-right of that cell. Tapping it opens the table-edit menu.
+    private func tableControlInfo() -> DrawingInfo.TableControl? {
+        guard isEditable, let ctx = tableCaretContext() else { return nil }
+        guard let tableToken = cachedTokens.first(where: {
+            if case .table = $0.type { return $0.range == ctx.tableRange }
+            return false
+        }) else { return nil }
+        guard let layoutManager = textView.layoutManager, textView.textContainer != nil else { return nil }
+
+        let containerOrigin = textView.textContainerOrigin
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: tableToken.range, actualCharacterRange: nil)
+        var unionRect = NSRect.zero
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
+            unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
+        }
+        guard unionRect != .zero else { return nil }
+
+        let tableLeft = containerOrigin.x
+        let tableWidth = textView.bounds.width - containerOrigin.x * 2
+        let tableTop = unionRect.origin.y + containerOrigin.y
+
+        // Resolve the active row index (header = row 0) and column widths.
+        let rowDataCount = cachedTokens.filter {
+            guard NSIntersectionRange($0.range, tableToken.range).length > 0 else { return false }
+            if case .tableHeaderRow = $0.type { return true }
+            if case .tableDataRow = $0.type { return true }
+            return false
+        }.count
+        let rowHeight = unionRect.height / CGFloat(max(1, rowDataCount))
+        let rowIndex = ctx.isInHeader ? 0 : ctx.dataRowIndex + 1
+
+        let columnWidths = tableColumnWidths(for: tableToken)
+        let totalWidth = columnWidths.reduce(0, +)
+        guard totalWidth > 0 else { return nil }
+        let scale = tableWidth / totalWidth
+
+        var cellX = tableLeft
+        for i in 0 ..< min(ctx.columnIndex, columnWidths.count) {
+            cellX += columnWidths[i] * scale
+        }
+        let colWidth = ctx.columnIndex < columnWidths.count ? columnWidths[ctx.columnIndex] * scale : 0
+        let cellRight = cellX + colWidth
+        let cellTop = tableTop + CGFloat(rowIndex) * rowHeight
+
+        let buttonSize: CGFloat = 16
+        let buttonRect = NSRect(
+            x: cellRight - buttonSize - 4,
+            y: cellTop + (rowHeight - buttonSize) / 2,
+            width: buttonSize,
+            height: buttonSize
+        )
+
+        return .init(buttonRect: buttonRect, accentColor: theme.accentColor)
+    }
+
+    // MARK: - Table Cell Editing
+
+    /// Hit-test a point against tables. Returns the source cell coordinates and the
+    /// on-screen cell rect, or nil if the point isn't inside a table cell.
+    func tableCellHit(at point: NSPoint) -> (tableRange: NSRange, rowIndex: Int, columnIndex: Int, cellRect: NSRect)? {
+        for table in textView.drawingInfo.tableInfos {
+            let bg = table.backgroundRect
+            guard bg.contains(point) else { continue }
+
+            let totalWidth = table.columnWidths.reduce(0, +)
+            guard totalWidth > 0 else { return nil }
+            let scale = bg.width / totalWidth
+
+            let rowIdx = min(table.rows.count - 1, max(0, Int((point.y - bg.minY) / table.rowHeight)))
+            guard table.rows.indices.contains(rowIdx) else { return nil }
+
+            var x = bg.minX
+            var colIdx = 0
+            var cellRect = NSRect(x: bg.minX, y: bg.minY + CGFloat(rowIdx) * table.rowHeight, width: 0, height: table.rowHeight)
+            for (i, width) in table.columnWidths.enumerated() {
+                let w = width * scale
+                if point.x >= x, point.x < x + w {
+                    colIdx = i
+                    cellRect.origin.x = x
+                    cellRect.size.width = w
+                    break
+                }
+                x += w
+                if i == table.columnWidths.count - 1 {
+                    colIdx = i
+                    cellRect.origin.x = x - w
+                    cellRect.size.width = w
+                }
+            }
+
+            // Map row index to source: header is row 0 in display, -1 in source.
+            let sourceRow = table.rows[rowIdx].isHeader ? -1 : displayRowToDataRow(table: table, displayIndex: rowIdx)
+            // Need the table token range — find it by matching backgroundRect's tokens.
+            guard let tableRange = tableRange(matching: bg) else { return nil }
+            return (tableRange, sourceRow, colIdx, cellRect)
+        }
+        return nil
+    }
+
+    private func displayRowToDataRow(table: DrawingInfo.TableInfo, displayIndex: Int) -> Int {
+        var dataIdx = -1
+        for i in 0 ... displayIndex where !table.rows[i].isHeader {
+            dataIdx += 1
+        }
+        return dataIdx
+    }
+
+    private func tableRange(matching bgRect: NSRect) -> NSRange? {
+        guard let layoutManager = textView.layoutManager, textView.textContainer != nil else { return nil }
+        let containerOrigin = textView.textContainerOrigin
+        for token in cachedTokens {
+            guard case .table = token.type else { continue }
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
+            var unionRect = NSRect.zero
+            layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
+                unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
+            }
+            let top = unionRect.origin.y + containerOrigin.y
+            if abs(top - bgRect.minY) < 2 { return token.range }
+        }
+        return nil
+    }
+
+    func beginEditingCell(at point: NSPoint) {
+        guard let hit = tableCellHit(at: point) else { return }
+        commitCellEdit()
+
+        let nsText = textView.string as NSString
+        let tableMarkdown = nsText.substring(with: hit.tableRange)
+        let current = TableEditor.cell(in: tableMarkdown, rowIndex: hit.rowIndex, columnIndex: hit.columnIndex) ?? ""
+
+        let field = NSTextField(frame: hit.cellRect.insetBy(dx: 4, dy: 4))
+        field.stringValue = current
+        field.font = hit.rowIndex < 0 ? theme.tableHeaderFont() : theme.tableFont()
+        field.isBordered = true
+        field.bezelStyle = .roundedBezel
+        field.drawsBackground = true
+        field.backgroundColor = theme.backgroundColor
+        field.textColor = theme.textColor
+        field.target = self
+        field.action = #selector(cellEditorCommitted)
+        field.delegate = self
+
+        textView.addSubview(field)
+        cellEditor = field
+        cellEditContext = (hit.tableRange, hit.rowIndex, hit.columnIndex)
+        window?.makeFirstResponder(field)
+
+        // Also move the text caret into this cell's source so the control button shows.
+        moveCaretIntoCell(tableRange: hit.tableRange, rowIndex: hit.rowIndex, columnIndex: hit.columnIndex)
+    }
+
+    @objc private func cellEditorCommitted() {
+        commitCellEdit()
+    }
+
+    /// Position the text caret inside a table cell's source content so the
+    /// table control affordance (which keys off `tableCaretContext`) appears.
+    private func moveCaretIntoCell(tableRange: NSRange, rowIndex: Int, columnIndex: Int) {
+        let nsText = textView.string as NSString
+        let tableMarkdown = nsText.substring(with: tableRange) as NSString
+        // Walk lines to the target row.
+        var lineStartInTable = 0
+        var displayRow = 0
+        var targetLineStart = 0
+        tableMarkdown.enumerateSubstrings(in: NSRange(location: 0, length: tableMarkdown.length), options: [
+            .byLines,
+            .substringNotRequired,
+        ]) { _, lineRange, _, stop in
+            // Skip the separator row (row 1 in display order).
+            let wanted = rowIndex < 0 ? 0 : rowIndex + 2
+            if displayRow == wanted {
+                targetLineStart = lineRange.location
+                stop.pointee = true
+            }
+            displayRow += 1
+            lineStartInTable = lineRange.location
+        }
+        _ = lineStartInTable
+        let caret = tableRange.location + targetLineStart + 2 // after "| "
+        if caret <= nsText.length {
+            isApplyingStyle = true
+            textView.setSelectedRange(NSRange(location: min(caret, nsText.length), length: 0))
+            isApplyingStyle = false
+        }
+    }
+
+    func commitCellEdit() {
+        guard let field = cellEditor, let ctx = cellEditContext else { return }
+        let newValue = field.stringValue
+        field.removeFromSuperview()
+        cellEditor = nil
+        cellEditContext = nil
+
+        let nsText = textView.string as NSString
+        guard NSMaxRange(ctx.tableRange) <= nsText.length else { return }
+        let tableMarkdown = nsText.substring(with: ctx.tableRange)
+        let updated = TableEditor.setCell(
+            in: tableMarkdown,
+            rowIndex: ctx.rowIndex,
+            columnIndex: ctx.columnIndex,
+            value: newValue
+        )
+        guard updated != tableMarkdown else { return }
+        applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
+    }
+
+    // MARK: - Table Menu
+
+    func showTableMenu(from view: NSView, at point: NSPoint) {
+        let menu = NSMenu()
+        menu.addItem(tableMenuItem("Insert Row Above", #selector(menuInsertRowAbove)))
+        menu.addItem(tableMenuItem("Insert Row Below", #selector(menuInsertRowBelow)))
+        menu.addItem(.separator())
+        menu.addItem(tableMenuItem("Insert Column Left", #selector(menuInsertColumnLeft)))
+        menu.addItem(tableMenuItem("Insert Column Right", #selector(menuInsertColumnRight)))
+        menu.addItem(.separator())
+        menu.addItem(tableMenuItem("Delete Row", #selector(menuDeleteRow)))
+        menu.addItem(tableMenuItem("Delete Column", #selector(menuDeleteColumn)))
+        menu.popUp(positioning: nil, at: point, in: view)
+    }
+
+    private func tableMenuItem(_ title: String, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    @objc private func menuInsertRowAbove() {
+        insertTableRowAbove()
+    }
+
+    @objc private func menuInsertRowBelow() {
+        insertTableRowBelow()
+    }
+
+    @objc private func menuInsertColumnLeft() {
+        insertTableColumnLeft()
+    }
+
+    @objc private func menuInsertColumnRight() {
+        insertTableColumnRight()
+    }
+
+    @objc private func menuDeleteRow() {
+        deleteTableRow()
+    }
+
+    @objc private func menuDeleteColumn() {
+        deleteTableColumn()
+    }
+
+    private func tableColumnWidths(for tableToken: MarkdownToken) -> [CGFloat] {
+        let nsText = textView.string as NSString
+        let font = theme.tableFont()
+        var rows: [[String]] = []
+        for token in cachedTokens where NSIntersectionRange(token.range, tableToken.range).length > 0 {
+            switch token.type {
+            case .tableHeaderRow, .tableDataRow:
+                rows.append(TableCellParser.parseCells(from: nsText.substring(with: token.range)))
+            default:
+                break
+            }
+        }
+        return TableCellParser.measureColumnWidths(rows: rows, font: font, padding: 28)
     }
 
     private func tableDrawingInfo(
@@ -453,13 +728,15 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -506,6 +783,27 @@ class PulpInternalTextView: NSTextView {
 
         for item in drawingInfo.checkboxItems where item.rect.intersects(dirtyRect) {
             drawCheckbox(in: item.rect, checked: item.checked, theme: theme)
+        }
+
+        if let control = drawingInfo.tableControl, control.buttonRect.intersects(dirtyRect) {
+            drawTableControl(control)
+        }
+    }
+
+    private func drawTableControl(_ control: DrawingInfo.TableControl) {
+        let rect = control.buttonRect
+        control.accentColor.withAlphaComponent(0.9).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+
+        // Three white dots (⋯) to signal a menu.
+        NSColor.white.setFill()
+        let dotSize: CGFloat = 2.2
+        let gap: CGFloat = 3.5
+        let centerY = rect.midY - dotSize / 2
+        let startX = rect.midX - gap - dotSize / 2
+        for i in 0 ..< 3 {
+            let dot = NSRect(x: startX + CGFloat(i) * gap - dotSize / 2 + dotSize / 2, y: centerY, width: dotSize, height: dotSize)
+            NSBezierPath(ovalIn: dot).fill()
         }
     }
 
@@ -665,6 +963,9 @@ class PulpInternalTextView: NSTextView {
             case "h", "H":
                 parent.toggleHighlight()
                 return true
+            case "t", "T":
+                parent.insertTable()
+                return true
             default:
                 break
             }
@@ -680,6 +981,17 @@ class PulpInternalTextView: NSTextView {
         }
 
         let point = convert(event.locationInWindow, from: nil)
+
+        if let control = drawingInfo.tableControl, control.buttonRect.insetBy(dx: -4, dy: -4).contains(point) {
+            parent.showTableMenu(from: self, at: NSPoint(x: control.buttonRect.midX, y: control.buttonRect.maxY))
+            return
+        }
+
+        // Click inside a table cell → open the inline cell editor.
+        if parent.tableCellHit(at: point) != nil {
+            parent.beginEditingCell(at: point)
+            return
+        }
 
         for item in drawingInfo.checkboxItems {
             let hitArea = item.rect.insetBy(dx: -4, dy: -4)
@@ -735,6 +1047,22 @@ extension PulpNSTextView: NSTextStorageDelegate {
 
 // MARK: - NSTextViewDelegate
 
+extension PulpNSTextView: NSTextFieldDelegate {
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if selector == #selector(NSResponder.insertNewline(_:)) || selector == #selector(NSResponder.insertTab(_:)) {
+            commitCellEdit()
+            return true
+        }
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            cellEditor?.removeFromSuperview()
+            cellEditor = nil
+            cellEditContext = nil
+            return true
+        }
+        return false
+    }
+}
+
 extension PulpNSTextView: NSTextViewDelegate {
     public func textViewDidChangeSelection(_ notification: Notification) {
         handleSelectionChange()
@@ -766,7 +1094,8 @@ extension PulpNSTextView: NSTextViewDelegate {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
+           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
+        {
             let indent = extractIndent(from: line)
             let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
             if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -778,7 +1107,8 @@ extension PulpNSTextView: NSTextViewDelegate {
         }
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let indent = (line as NSString).substring(with: match.range(at: 1))
             let bullet = (line as NSString).substring(with: match.range(at: 2))
             let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)

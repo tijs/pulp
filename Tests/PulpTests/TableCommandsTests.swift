@@ -1,0 +1,93 @@
+#if canImport(AppKit)
+import AppKit
+import Foundation
+@testable import Pulp
+import Testing
+
+/// Integration tests exercising the table editing commands against a real
+/// `PulpNSTextView`. These cover the caret-resolution + source-mutation path
+/// that drives the in-cell controls and inline editing — the parts that can't
+/// be verified by eye in a screenshot.
+@MainActor
+@Suite("TableCommands")
+struct TableCommandsTests {
+    private func editor(_ text: String) -> PulpNSTextView {
+        let view = PulpNSTextView()
+        view.setText(text)
+        return view
+    }
+
+    private let sample = "| Name | Status |\n| --- | --- |\n| Alpha | Done |\n| Beta | Todo |"
+
+    @Test func insertTableIntoEmptyDocument() {
+        let view = editor("")
+        view.insertTable()
+        let parsed = TableEditor.parse(view.text)
+        #expect(parsed?.columnCount == 3)
+        #expect(parsed?.rows.count == 2)
+    }
+
+    @Test func caretContextResolvesDataCell() {
+        let view = editor(sample)
+        // Place caret inside "Beta" (second data row, first column).
+        let location = (view.text as NSString).range(of: "Beta").location + 1
+        view.selectedRange = NSRange(location: location, length: 0)
+
+        let ctx = view.tableCaretContext()
+        #expect(ctx != nil)
+        #expect(ctx?.isInHeader == false)
+        #expect(ctx?.dataRowIndex == 1)
+        #expect(ctx?.columnIndex == 0)
+    }
+
+    @Test func caretContextResolvesHeaderCell() {
+        let view = editor(sample)
+        let location = (view.text as NSString).range(of: "Status").location + 1
+        view.selectedRange = NSRange(location: location, length: 0)
+
+        let ctx = view.tableCaretContext()
+        #expect(ctx?.isInHeader == true)
+        #expect(ctx?.columnIndex == 1)
+    }
+
+    @Test func insertRowBelowCaret() {
+        let view = editor(sample)
+        let location = (view.text as NSString).range(of: "Alpha").location + 1
+        view.selectedRange = NSRange(location: location, length: 0)
+
+        view.insertTableRowBelow()
+        let parsed = TableEditor.parse(view.text)
+        #expect(parsed?.rows.count == 3)
+        #expect(parsed?.rows[0] == ["Alpha", "Done"])
+        #expect(parsed?.rows[1] == ["", ""])
+        #expect(parsed?.rows[2] == ["Beta", "Todo"])
+    }
+
+    @Test func insertColumnRightOfCaret() {
+        let view = editor(sample)
+        let location = (view.text as NSString).range(of: "Name").location + 1
+        view.selectedRange = NSRange(location: location, length: 0)
+
+        view.insertTableColumnRight()
+        let parsed = TableEditor.parse(view.text)
+        #expect(parsed?.columnCount == 3)
+        #expect(parsed?.header == ["Name", "Column", "Status"])
+    }
+
+    @Test func deleteRowAtCaret() {
+        let view = editor(sample)
+        let location = (view.text as NSString).range(of: "Alpha").location + 1
+        view.selectedRange = NSRange(location: location, length: 0)
+
+        view.deleteTableRow()
+        let parsed = TableEditor.parse(view.text)
+        #expect(parsed?.rows == [["Beta", "Todo"]])
+    }
+
+    @Test func noContextOutsideTable() {
+        let view = editor("Just a paragraph, no table here.")
+        view.selectedRange = NSRange(location: 3, length: 0)
+        #expect(view.tableCaretContext() == nil)
+    }
+}
+#endif

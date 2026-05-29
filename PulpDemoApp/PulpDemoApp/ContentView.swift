@@ -91,6 +91,7 @@ Below the line.
     @State private var derivedTitle = ""
     @State private var derivedTags: [String] = []
     @State private var hasTodos = false
+    @StateObject private var controller = PulpEditorController()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,7 +104,8 @@ Below the line.
                     onTitle: { derivedTitle = $0 },
                     onTags: { derivedTags = $0 },
                     onTodos: { hasTodos = $0 }
-                )
+                ),
+                controller: controller
             )
         }
         .frame(minWidth: 600, minHeight: 400)
@@ -139,6 +141,21 @@ Below the line.
                 }
             }
             Spacer()
+            Menu {
+                Button("Insert Table (3×2)") { controller.insertTable(rows: 2, columns: 3) }
+                Divider()
+                Button("Insert Row Below") { controller.insertTableRowBelow() }
+                Button("Insert Row Above") { controller.insertTableRowAbove() }
+                Button("Insert Column Right") { controller.insertTableColumnRight() }
+                Button("Insert Column Left") { controller.insertTableColumnLeft() }
+                Divider()
+                Button("Delete Row", role: .destructive) { controller.deleteTableRow() }
+                Button("Delete Column", role: .destructive) { controller.deleteTableColumn() }
+            } label: {
+                Label("Table", systemImage: "tablecells")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

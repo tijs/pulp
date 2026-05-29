@@ -2,18 +2,19 @@ import Foundation
 
 public enum ContentAnalyzer {
     public static func extractTitle(from text: String) -> String {
-        guard let firstLine = text.split(
-            separator: "\n",
-            maxSplits: 1,
-            omittingEmptySubsequences: false
-        ).first else {
-            return ""
+        // First non-empty line that isn't table/structural markup.
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            if line.hasPrefix("|") { continue } // table row
+            if line.allSatisfy({ $0 == "-" || $0 == "|" || $0 == ":" || $0 == " " }) { continue }
+            var title = line
+            if title.hasPrefix("# ") {
+                title = String(title.dropFirst(2))
+            }
+            return title.trimmingCharacters(in: .whitespaces)
         }
-        var title = String(firstLine)
-        if title.hasPrefix("# ") {
-            title = String(title.dropFirst(2))
-        }
-        return title.trimmingCharacters(in: .whitespaces)
+        return ""
     }
 
     public static func extractTags(from text: String) -> [String] {

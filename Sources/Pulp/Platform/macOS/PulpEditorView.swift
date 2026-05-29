@@ -2,22 +2,72 @@
 import AppKit
 import SwiftUI
 
+/// A handle a SwiftUI host can hold to drive editor commands (formatting, table
+/// insertion, etc.) from its own chrome — a toolbar, menu, or floating bar. The
+/// editor library stays neutral; the host owns the affordance.
+public final class PulpEditorController: ObservableObject {
+    public weak var editor: PulpEditorProtocol?
+    public init() {}
+
+    public var isReady: Bool {
+        editor != nil
+    }
+
+    /// Insert a blank table at the caret. Defaults to a 3-column, 2-row table.
+    public func insertTable(rows: Int = 2, columns: Int = 3) {
+        editor?.insertTable(rows: rows, columns: columns)
+    }
+
+    public func insertTableRowBelow() {
+        editor?.insertTableRowBelow()
+    }
+
+    public func insertTableRowAbove() {
+        editor?.insertTableRowAbove()
+    }
+
+    public func insertTableColumnRight() {
+        editor?.insertTableColumnRight()
+    }
+
+    public func insertTableColumnLeft() {
+        editor?.insertTableColumnLeft()
+    }
+
+    public func deleteTableRow() {
+        editor?.deleteTableRow()
+    }
+
+    public func deleteTableColumn() {
+        editor?.deleteTableColumn()
+    }
+
+    /// Whether the caret currently sits inside a table (host can enable/disable
+    /// table-editing affordances accordingly).
+    public var isCaretInTable: Bool {
+        editor?.tableCaretContext() != nil
+    }
+}
+
 public struct PulpEditorView: NSViewRepresentable {
     @Binding var text: String
     var theme: PulpTheme
     var delegate: PulpEditorDelegate?
     var isEditable: Bool
+    var controller: PulpEditorController?
 
     public init(
         text: Binding<String>,
         theme: PulpTheme = .default,
         delegate: PulpEditorDelegate? = nil,
-        isEditable: Bool = true
+        isEditable: Bool = true,
+        controller: PulpEditorController? = nil
     ) {
         self._text = text
         self.theme = theme
         self.delegate = delegate
         self.isEditable = isEditable
+        self.controller = controller
     }
 
     public func makeNSView(context: Context) -> PulpNSTextView {
@@ -27,15 +77,18 @@ public struct PulpEditorView: NSViewRepresentable {
         editor.setText(text)
         context.coordinator.editor = editor
         context.coordinator.externalDelegate = delegate
+        controller?.editor = editor
         return editor
     }
 
     public func updateNSView(_ nsView: PulpNSTextView, context: Context) {
         context.coordinator.externalDelegate = delegate
+        controller?.editor = nsView
         nsView.isEditable = isEditable
 
-        if nsView.theme.bodySize != theme.bodySize ||
-            nsView.theme.markerShrinkSize != theme.markerShrinkSize {
+        let themeChanged = nsView.theme.bodySize != theme.bodySize ||
+            nsView.theme.markerShrinkSize != theme.markerShrinkSize
+        if themeChanged {
             nsView.theme = theme
         }
 

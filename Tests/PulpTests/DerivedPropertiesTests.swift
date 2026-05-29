@@ -61,6 +61,15 @@ struct ContentAnalyzerTests {
         #expect(tags.isEmpty)
     }
 
+    @Test func titleSkipsLeadingTable() {
+        let text = "| Column 1 | Column 2 |\n| --- | --- |\n| a | b |\n\n# Real Title"
+        #expect(ContentAnalyzer.extractTitle(from: text) == "Real Title")
+    }
+
+    @Test func titleSkipsLeadingBlankLines() {
+        #expect(ContentAnalyzer.extractTitle(from: "\n\n  Actual line") == "Actual line")
+    }
+
     @Test func hasUncheckedTodos() {
         #expect(ContentAnalyzer.hasUncheckedTodos(in: "- [ ] task"))
         #expect(!ContentAnalyzer.hasUncheckedTodos(in: "- [x] done"))
