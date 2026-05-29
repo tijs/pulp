@@ -193,6 +193,73 @@ struct TableInCellControlsTests {
         #expect(parsed?.rows[1] == ["", ""])
     }
 
+    /// Two *padded* (aligned) tables like the demo, separated by a paragraph.
+    private let paddedTwoTables = """
+    # Doc
+
+    | Feature              | Status  | Priority |
+    |----------------------|---------|----------|
+    | Headings             | Done    | P0       |
+    | Task Lists           | Done    | P0       |
+    | Tables               | New     | P1       |
+
+    A second table with longer content:
+
+    | Name | Description              | Rating |
+    |------|--------------------------|--------|
+    | Pulp | Inline Markdown editor   | 5      |
+    | Pear | P2P notes with CRDT sync | 4      |
+    """
+
+    private func paddedEditor() -> PulpNSTextView {
+        let view = PulpNSTextView()
+        view.setText(paddedTwoTables)
+        view.layoutForTesting(height: 3000)
+        return view
+    }
+
+    @Test func clickingPaddedCellsDoesNotReformatOrCorrupt() {
+        let view = paddedEditor()
+        let original = view.text
+        guard let first = view.tableInfosForTesting.first else {
+            Issue.record("no table")
+            return
+        }
+        // Open and close several cells in the first (padded) table without typing.
+        for (row, col) in [(1, 1), (2, 0), (1, 2), (3, 1)] {
+            view.beginEditingCell(at: cellPoint(first, displayRow: row, column: col))
+            view.commitCellEdit()
+        }
+        // No value changed → source must be byte-identical (no canonical reformat,
+        // no merge). This is the "just clicking around corrupts" repro.
+        #expect(view.text == original)
+        let tableCount = MarkdownTokenizer().tokenize(view.text).filter {
+            if case .table = $0.type { return true }
+            return false
+        }.count
+        #expect(tableCount == 2)
+    }
+
+    @Test func editingPaddedCellKeepsSecondTableIntact() {
+        let view = paddedEditor()
+        guard let first = view.tableInfosForTesting.first else {
+            Issue.record("no table")
+            return
+        }
+        view.beginEditingCell(at: cellPoint(first, displayRow: 1, column: 1)) // "Done"
+        view.activeCellEditorValue = "Shipped"
+        view.commitCellEdit()
+
+        #expect(view.text.contains("Shipped"))
+        #expect(view.text.contains("A second table with longer content:"))
+        #expect(view.text.contains("Pulp"))
+        let tableCount = MarkdownTokenizer().tokenize(view.text).filter {
+            if case .table = $0.type { return true }
+            return false
+        }.count
+        #expect(tableCount == 2)
+    }
+
     @Test func clickingCellsRepeatedlyKeepsSourceValid() {
         let view = laidOutEditor()
         let original = view.text

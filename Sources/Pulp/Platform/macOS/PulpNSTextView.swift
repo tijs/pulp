@@ -162,9 +162,17 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         isApplyingRemoteEdit = false
     }
 
+    /// Notify the delegate of a locally-originated edit (table cell / structural
+    /// edits go through `applyRemoteEdit`, which suppresses the echo) so a consumer
+    /// binding stays in sync. Also refreshes derived properties.
+    func notifyLocalEdit(_ edit: TextEdit) {
+        delegate?.editor(self, didApplyEdit: edit)
+        updateDerivedProperties()
+    }
+
     // MARK: - Styling
 
-    private func restyleAll() {
+    func restyleAll() {
         guard let textStorage = textView.textStorage else { return }
         let fullRange = NSRange(location: 0, length: textStorage.length)
         cachedTokens = tokenizer.tokenize(textStorage.string)

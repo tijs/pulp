@@ -152,41 +152,41 @@ extension PulpNSTextView {
         return nil
     }
 
-    /// Open an inline editor over a cell. Does not move the text caret — the cell's
-    /// control state is tracked by `activeCell`, so clicks never reflow the table.
+    /// Cell text inset used by both the overlay renderer and the inline editor so
+    /// the editor's text sits exactly where the rendered text was (no jump).
+    static let cellTextPadding: CGFloat = 14
+
+    /// Edit a cell in place. Commit any prior edit first (which may reflow the
+    /// document), then hit-test against the fresh layout so the captured range is
+    /// always valid. The editor is a seamless, borderless field positioned exactly
+    /// over the cell text — it looks like editing the rendered text directly.
     func beginEditingCell(at point: NSPoint) {
-        guard let hit = tableCellHit(at: point) else { return }
         commitCellEdit()
+        guard let hit = tableCellHit(at: point) else { return }
 
         let nsText = textView.string as NSString
         let tableMarkdown = nsText.substring(with: hit.tableRange)
         let current = TableEditor.cell(in: tableMarkdown, rowIndex: hit.rowIndex, columnIndex: hit.columnIndex) ?? ""
 
-        // A neat editing band inside the cell. The rendered cell text is suppressed
-        // (see updateDrawingInfo), so a clean opaque field with an accent outline
-        // is all that shows — no doubled text, no reflow.
+        let pad = Self.cellTextPadding
         let cell = hit.cellRect
-        let fieldHeight = min(cell.height - 6, 26)
-        let fieldFrame = NSRect(
-            x: cell.minX + 10,
-            y: cell.midY - fieldHeight / 2,
-            width: max(20, cell.width - 18),
-            height: fieldHeight
-        )
-        let field = NSTextField(frame: fieldFrame)
+        // -3 compensates for NSTextField's internal text inset so the first glyph
+        // lands at the same x the renderer used (cell.minX + pad).
+        let field = SeamlessCellField(frame: NSRect(
+            x: cell.minX + pad - 3,
+            y: cell.minY,
+            width: max(20, cell.width - pad * 2 + 6),
+            height: cell.height
+        ))
         field.stringValue = current
         field.font = hit.rowIndex < 0 ? theme.tableHeaderFont() : theme.tableFont()
         field.isBordered = false
         field.focusRingType = .none
-        field.drawsBackground = true
-        field.backgroundColor = theme.backgroundColor
+        field.drawsBackground = false
         field.textColor = theme.textColor
         field.usesSingleLineMode = true
-        field.lineBreakMode = .byTruncatingTail
-        field.wantsLayer = true
-        field.layer?.cornerRadius = 4
-        field.layer?.borderWidth = 1.5
-        field.layer?.borderColor = theme.accentColor.cgColor
+        field.lineBreakMode = .byClipping
+        field.cell?.isScrollable = true
         field.target = self
         field.action = #selector(cellEditorCommitted)
         field.delegate = self
@@ -229,22 +229,36 @@ extension PulpNSTextView {
             return
         }
         let tableMarkdown = nsText.substring(with: ctx.tableRange)
+        let oldValue = TableEditor.cell(in: tableMarkdown, rowIndex: ctx.rowIndex, columnIndex: ctx.columnIndex) ?? ""
+
+        // Only write back when the cell's value actually changed. Crucially this
+        // makes merely clicking between cells a no-op — no rewrite, no reflow, so
+        // captured ranges can never go stale and corrupt the document.
+        guard newValue != oldValue else {
+            updateDrawingInfo()
+            return
+        }
+
         let updated = TableEditor.setCell(
             in: tableMarkdown,
             rowIndex: ctx.rowIndex,
             columnIndex: ctx.columnIndex,
             value: newValue
         )
-        if updated != tableMarkdown {
-            applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
-            // The table may have changed length; keep the control on this cell.
-            activeCell = TableCellRef(
-                tableRange: NSRange(location: ctx.tableRange.location, length: (updated as NSString).length),
-                rowIndex: ctx.rowIndex,
-                columnIndex: ctx.columnIndex
-            )
+        guard updated != tableMarkdown else {
+            updateDrawingInfo()
+            return
         }
-        // restyleAll runs async after the edit; refresh the control now too.
+        applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
+        // Re-tokenize synchronously so any subsequent hit-test sees fresh ranges.
+        restyleAll()
+        notifyLocalEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
+        // The table may have changed length; keep the control on this cell.
+        activeCell = TableCellRef(
+            tableRange: NSRange(location: ctx.tableRange.location, length: (updated as NSString).length),
+            rowIndex: ctx.rowIndex,
+            columnIndex: ctx.columnIndex
+        )
         updateDrawingInfo()
     }
 
@@ -426,6 +440,39 @@ extension PulpNSTextView {
             headerFont: headerFont,
             textColor: theme.textColor
         )
+    }
+}
+
+/// A borderless, transparent text field whose text is vertically centered, so the
+/// inline cell editor sits exactly where the rendered cell text was — editing
+/// looks in-place, with no visible box and no text jump.
+final class SeamlessCellField: NSTextField {
+    override class var cellClass: AnyClass? {
+        get { VerticallyCenteredTextCell.self }
+        set {}
+    }
+}
+
+final class VerticallyCenteredTextCell: NSTextFieldCell {
+    private func centered(_ rect: NSRect) -> NSRect {
+        let height = cellSize(forBounds: rect).height
+        guard height < rect.height else { return rect }
+        var r = rect
+        r.origin.y += (rect.height - height) / 2
+        r.size.height = height
+        return r
+    }
+
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        super.drawInterior(withFrame: centered(cellFrame), in: controlView)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: centered(rect), in: controlView, editor: editor, delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor: NSText, delegate: Any?, start: Int, length: Int) {
+        super.select(withFrame: centered(rect), in: controlView, editor: editor, delegate: delegate, start: start, length: length)
     }
 }
 

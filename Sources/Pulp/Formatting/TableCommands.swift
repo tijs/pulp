@@ -175,6 +175,8 @@ public extension PulpEditorProtocol {
         let tableMarkdown = nsText.substring(with: ctx.tableRange)
         let newMarkdown = mutate(tableMarkdown, ctx)
         guard newMarkdown != tableMarkdown else { return }
-        applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: newMarkdown))
+        let edit = TextEdit(range: ctx.tableRange, replacementText: newMarkdown)
+        applyRemoteEdit(edit)
+        delegate?.editor(self, didApplyEdit: edit)
     }
 }
