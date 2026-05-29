@@ -534,9 +534,54 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         applyRemoteEdit(TextEdit(range: ctx.tableRange, replacementText: updated))
     }
 
+    // MARK: - Verification Seams
+
+    //
+    // The table cell geometry (hit rects, the in-cell control button) is computed
+    // from NSLayoutManager line fragments, which only exist after a layout pass.
+    // Synthetic mouse events aren't available in unit tests, so these internal
+    // helpers let tests force layout and drive the exact code paths a click takes.
+
+    /// Force a layout pass at a fixed size so table geometry is computed without
+    /// a hosting window, then refresh the drawing info.
+    func layoutForTesting(width: CGFloat = 600, height: CGFloat = 2000) {
+        textView.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        if let container = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: container)
+        }
+        updateDrawingInfo()
+    }
+
+    /// Tables currently laid out for drawing.
+    var tableInfosForTesting: [DrawingInfo.TableInfo] {
+        textView.drawingInfo.tableInfos
+    }
+
+    /// The in-cell control button currently shown (caret-in-cell), if any.
+    var tableControlForTesting: DrawingInfo.TableControl? {
+        textView.drawingInfo.tableControl
+    }
+
+    /// Whether an inline cell editor field is currently open.
+    var hasActiveCellEditor: Bool {
+        cellEditor != nil
+    }
+
+    /// Read or replace the active cell editor's text (simulating user typing).
+    var activeCellEditorValue: String? {
+        get { cellEditor?.stringValue }
+        set { cellEditor?.stringValue = newValue ?? "" }
+    }
+
     // MARK: - Table Menu
 
     func showTableMenu(from view: NSView, at point: NSPoint) {
+        makeTableMenu().popUp(positioning: nil, at: point, in: view)
+    }
+
+    /// The structural table-editing menu (add/delete row & column) shown by the
+    /// in-cell control button and the contextual menu when the caret is in a table.
+    func makeTableMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(tableMenuItem("Insert Row Above", #selector(menuInsertRowAbove)))
         menu.addItem(tableMenuItem("Insert Row Below", #selector(menuInsertRowBelow)))
@@ -546,7 +591,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         menu.addItem(.separator())
         menu.addItem(tableMenuItem("Delete Row", #selector(menuDeleteRow)))
         menu.addItem(tableMenuItem("Delete Column", #selector(menuDeleteColumn)))
-        menu.popUp(positioning: nil, at: point, in: view)
+        return menu
+    }
+
+    @objc func menuInsertTable() {
+        insertTable(rows: 2, columns: 3)
     }
 
     private func tableMenuItem(_ title: String, _ action: Selector) -> NSMenuItem {
@@ -1010,6 +1059,25 @@ class PulpInternalTextView: NSTextView {
         }
 
         super.mouseDown(with: event)
+    }
+
+    /// Floating contextual menu: structural table edits when right-clicking inside
+    /// a table, otherwise an "Insert Table" entry above the standard text actions.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let parent = pulpParent, isEditable else { return super.menu(for: event) }
+        let point = convert(event.locationInWindow, from: nil)
+
+        if parent.tableCellHit(at: point) != nil {
+            parent.beginEditingCell(at: point)
+            return parent.makeTableMenu()
+        }
+
+        let menu = super.menu(for: event) ?? NSMenu()
+        let insert = NSMenuItem(title: "Insert Table (3×2)", action: #selector(PulpNSTextView.menuInsertTable), keyEquivalent: "")
+        insert.target = parent
+        menu.insertItem(insert, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
     }
 }
 
