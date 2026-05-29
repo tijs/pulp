@@ -169,6 +169,30 @@ struct TableInCellControlsTests {
         #expect(view.tableControlForTesting == nil)
     }
 
+    @Test func structuralCommandsUseActivatedCellNotCaret() throws {
+        let view = laidOutEditor()
+        // Caret is outside the table (start of document), so these commands must
+        // rely on the activated cell, not the caret.
+        view.selectedRange = NSRange(location: 0, length: 0)
+        guard let info = view.tableInfosForTesting.first else {
+            Issue.record("table not laid out")
+            return
+        }
+        view.activateCell(at: cellPoint(info, displayRow: 1, column: 0)) // first data row
+        view.insertTableRowBelow()
+
+        // A blank row was inserted after the first data row (Alpha/Done).
+        let table = MarkdownTokenizer().tokenize(view.text).first {
+            if case .table = $0.type { return true }
+            return false
+        }
+        let md = try (view.text as NSString).substring(with: #require(table?.range))
+        let parsed = TableEditor.parse(md)
+        #expect(parsed?.rows.count == 3)
+        #expect(parsed?.rows[0] == ["Alpha", "Done"])
+        #expect(parsed?.rows[1] == ["", ""])
+    }
+
     @Test func clickingCellsRepeatedlyKeepsSourceValid() {
         let view = laidOutEditor()
         let original = view.text

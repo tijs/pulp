@@ -37,6 +37,9 @@ public final class MarkdownStyler {
     }
 
     private func contentRuns(for token: MarkdownToken) -> [StyleRun] {
+        if let inline = inlineEmphasisRuns(for: token) {
+            return inline
+        }
         switch token.type {
         case let .heading(level):
             let paragraphStyle = NSMutableParagraphStyle()
@@ -48,50 +51,6 @@ public final class MarkdownStyler {
                     .font: theme.headingFont(level: level),
                     .foregroundColor: theme.textColor,
                     .paragraphStyle: paragraphStyle,
-                ]
-            )]
-
-        case .bold:
-            let contentRange = contentRange(token: token)
-            return [StyleRun(
-                range: contentRange,
-                attributes: [.font: PulpFont.boldSystemFont(ofSize: theme.bodySize)]
-            )]
-
-        case .italic:
-            let contentRange = contentRange(token: token)
-            let descriptor = theme.bodyFont().fontDescriptor.adding(symbolicTraits: .italic)
-            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? theme.bodyFont()
-            return [StyleRun(
-                range: contentRange,
-                attributes: [.font: font]
-            )]
-
-        case .boldItalic:
-            let contentRange = contentRange(token: token)
-            let descriptor = PulpFont.boldSystemFont(ofSize: theme.bodySize).fontDescriptor.adding(symbolicTraits: .italic)
-            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? PulpFont.boldSystemFont(ofSize: theme.bodySize)
-            return [StyleRun(
-                range: contentRange,
-                attributes: [.font: font]
-            )]
-
-        case .strikethrough:
-            let contentRange = contentRange(token: token)
-            return [StyleRun(
-                range: contentRange,
-                attributes: [
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .foregroundColor: theme.secondaryTextColor,
-                ]
-            )]
-
-        case .highlight:
-            let contentRange = contentRange(token: token)
-            return [StyleRun(
-                range: contentRange,
-                attributes: [
-                    .backgroundColor: theme.highlightColor,
                 ]
             )]
 
@@ -181,6 +140,42 @@ public final class MarkdownStyler {
 
         case .tableDataRow:
             return tableRowRuns(token: token, isHeader: false)
+
+        case .bold, .italic, .boldItalic, .strikethrough, .highlight:
+            return [] // handled by inlineEmphasisRuns
+        }
+    }
+
+    /// Inline character emphasis applied to a token's content range. Returns nil
+    /// for token types that aren't inline emphasis.
+    private func inlineEmphasisRuns(for token: MarkdownToken) -> [StyleRun]? {
+        let content = contentRange(token: token)
+        switch token.type {
+        case .bold:
+            return [StyleRun(range: content, attributes: [.font: PulpFont.boldSystemFont(ofSize: theme.bodySize)])]
+
+        case .italic:
+            let descriptor = theme.bodyFont().fontDescriptor.adding(symbolicTraits: .italic)
+            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? theme.bodyFont()
+            return [StyleRun(range: content, attributes: [.font: font])]
+
+        case .boldItalic:
+            let bold = PulpFont.boldSystemFont(ofSize: theme.bodySize)
+            let descriptor = bold.fontDescriptor.adding(symbolicTraits: .italic)
+            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? bold
+            return [StyleRun(range: content, attributes: [.font: font])]
+
+        case .strikethrough:
+            return [StyleRun(range: content, attributes: [
+                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                .foregroundColor: theme.secondaryTextColor,
+            ])]
+
+        case .highlight:
+            return [StyleRun(range: content, attributes: [.backgroundColor: theme.highlightColor])]
+
+        default:
+            return nil
         }
     }
 

@@ -48,6 +48,20 @@ public extension PulpEditorProtocol {
     }
 }
 
+/// A reference to a specific table cell in the document. `rowIndex` is -1 for the
+/// header row, 0+ for data rows.
+public struct TableCellRef: Equatable {
+    public let tableRange: NSRange
+    public let rowIndex: Int
+    public let columnIndex: Int
+
+    public init(tableRange: NSRange, rowIndex: Int, columnIndex: Int) {
+        self.tableRange = tableRange
+        self.rowIndex = rowIndex
+        self.columnIndex = columnIndex
+    }
+}
+
 /// Context describing where the caret sits within a table.
 public struct TableCaretContext {
     /// Range of the whole table in the document.
@@ -140,9 +154,24 @@ public extension PulpEditorProtocol {
         return max(0, pipes - 1)
     }
 
+    /// Resolve the table context to act on: the clicked/active cell if present
+    /// (the in-cell editing model never moves the caret), otherwise the caret.
+    func resolvedTableContext() -> TableCaretContext? {
+        if let cell = activeTableCell {
+            return TableCaretContext(
+                tableRange: cell.tableRange,
+                dataRowIndex: cell.rowIndex,
+                columnIndex: cell.columnIndex,
+                isInHeader: cell.rowIndex < 0
+            )
+        }
+        return tableCaretContext()
+    }
+
     private func mutateTableAtCaret(_ mutate: (String, TableCaretContext) -> String) {
-        guard let ctx = tableCaretContext() else { return }
+        guard let ctx = resolvedTableContext() else { return }
         let nsText = text as NSString
+        guard NSMaxRange(ctx.tableRange) <= nsText.length else { return }
         let tableMarkdown = nsText.substring(with: ctx.tableRange)
         let newMarkdown = mutate(tableMarkdown, ctx)
         guard newMarkdown != tableMarkdown else { return }
