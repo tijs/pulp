@@ -81,8 +81,7 @@ private extension PulpEditorProtocol {
         let line = nsText.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let existingPrefix = (line as NSString).substring(with: match.range)
             if existingPrefix == newPrefix {
                 let removeRange = NSRange(location: lineRange.location, length: newPrefix.count)

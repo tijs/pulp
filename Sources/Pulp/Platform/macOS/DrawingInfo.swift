@@ -9,8 +9,7 @@ struct DrawingInfo {
 
     struct TableInfo {
         let backgroundRect: NSRect
-        let headerRect: NSRect?
-        let rowRects: [NSRect]
+        let rowHeight: CGFloat
         let columnWidths: [CGFloat]
         let rows: [TableRowData]
         let borderColor: PulpColor
@@ -24,7 +23,6 @@ struct DrawingInfo {
 
     struct TableRowData {
         let cells: [String]
-        let rect: NSRect
         let isHeader: Bool
     }
 

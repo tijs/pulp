@@ -181,8 +181,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
-            {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -325,16 +324,24 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         layoutManager: NSLayoutManager,
         containerOrigin: NSPoint
     ) -> DrawingInfo.TableInfo? {
-        guard let bgRect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) else {
-            return nil
+        // Exact bounding rect (no extra padding) so rows divide evenly.
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
+        var unionRect = NSRect.zero
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
+            unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
         }
+        guard unionRect != .zero else { return nil }
+        let bgRect = NSRect(
+            x: containerOrigin.x,
+            y: unionRect.origin.y + containerOrigin.y,
+            width: textView.bounds.width - containerOrigin.x * 2,
+            height: unionRect.height
+        )
 
         let nsText = textView.string as NSString
         let font = PulpFont.systemFont(ofSize: theme.bodySize * 0.9)
         let headerFont = PulpFont.systemFont(ofSize: theme.bodySize * 0.9, weight: .semibold)
 
-        var headerRect: NSRect?
-        var rowRects: [NSRect] = []
         var rowDataList: [DrawingInfo.TableRowData] = []
 
         for otherToken in cachedTokens {
@@ -342,18 +349,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
 
             switch otherToken.type {
             case .tableHeaderRow:
-                if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
-                    headerRect = rect
-                    rowRects.append(rect)
-                    let content = nsText.substring(with: otherToken.range)
-                    rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), rect: rect, isHeader: true))
-                }
+                let content = nsText.substring(with: otherToken.range)
+                rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), isHeader: true))
             case .tableDataRow:
-                if let rect = lineRect(for: otherToken, layoutManager: layoutManager, containerOrigin: containerOrigin) {
-                    rowRects.append(rect)
-                    let content = nsText.substring(with: otherToken.range)
-                    rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), rect: rect, isHeader: false))
-                }
+                let content = nsText.substring(with: otherToken.range)
+                rowDataList.append(.init(cells: TableCellParser.parseCells(from: content), isHeader: false))
             default:
                 break
             }
@@ -362,10 +362,14 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let allCellRows = rowDataList.map(\.cells)
         let columnWidths = TableCellParser.measureColumnWidths(rows: allCellRows, font: font, padding: 28)
 
+        // Uniform row height matches the minimumLineHeight set in MarkdownStyler.
+        // Distribute the table's measured height evenly so header == data rows exactly.
+        let rowCount = max(1, rowDataList.count)
+        let rowHeight = bgRect.height / CGFloat(rowCount)
+
         return .init(
             backgroundRect: bgRect,
-            headerRect: headerRect,
-            rowRects: rowRects,
+            rowHeight: rowHeight,
             columnWidths: columnWidths,
             rows: rowDataList,
             borderColor: theme.borderColor,
@@ -449,15 +453,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -514,56 +516,55 @@ class PulpInternalTextView: NSTextView {
         guard totalContentWidth > 0 else { return }
 
         let scale = bg.width / totalContentWidth
+        let cornerRadius: CGFloat = 6
+        let rowHeight = table.rowHeight
+        let cellPadding: CGFloat = 14
 
-        // Row backgrounds (header fill + alternating stripes) — draw first, under everything
-        for (rowIndex, row) in table.rows.enumerated() {
-            let rowRect = NSRect(x: bg.minX, y: row.rect.origin.y, width: bg.width, height: row.rect.height)
+        /// Uniform row rect: row i spans [bg.minY + i*rowHeight, +rowHeight]
+        func rowRect(_ index: Int) -> NSRect {
+            NSRect(x: bg.minX, y: bg.minY + CGFloat(index) * rowHeight, width: bg.width, height: rowHeight)
+        }
+
+        // Backgrounds (header fill + alternating stripes), clipped to rounded shape
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: bg, xRadius: cornerRadius, yRadius: cornerRadius).addClip()
+        for (index, row) in table.rows.enumerated() {
             if row.isHeader {
                 table.headerBackground.setFill()
-                NSBezierPath(rect: rowRect).fill()
-            } else if rowIndex % 2 == 1 {
+                rowRect(index).fill()
+            } else if index % 2 == 1 {
                 table.rowStripeBackground.setFill()
-                NSBezierPath(rect: rowRect).fill()
+                rowRect(index).fill()
             }
         }
+        NSGraphicsContext.restoreGraphicsState()
 
         // Outer border
         borderColor.setStroke()
-        let borderPath = NSBezierPath(roundedRect: bg.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+        let borderPath = NSBezierPath(roundedRect: bg.insetBy(dx: 0.5, dy: 0.5), xRadius: cornerRadius, yRadius: cornerRadius)
         borderPath.lineWidth = 1
         borderPath.stroke()
 
-        // Header bottom border
-        if let headerRect = table.headerRect {
-            table.strongBorderColor.setStroke()
-            let headerLine = NSBezierPath()
-            headerLine.move(to: NSPoint(x: bg.minX, y: headerRect.maxY))
-            headerLine.line(to: NSPoint(x: bg.maxX, y: headerRect.maxY))
-            headerLine.lineWidth = 1.5
-            headerLine.stroke()
-        }
+        // Row dividers + header bottom border + cell content
+        for (index, row) in table.rows.enumerated() {
+            let rect = rowRect(index)
 
-        // Row dividers + cell content
-        for (rowIndex, row) in table.rows.enumerated() {
-            let rowRect = row.rect
-
-            // Row divider (skip first row)
-            if rowIndex > 0 {
-                borderColor.setStroke()
+            if index > 0 {
+                let isHeaderDivider = table.rows[index - 1].isHeader
+                (isHeaderDivider ? table.strongBorderColor : borderColor).setStroke()
                 let line = NSBezierPath()
-                line.move(to: NSPoint(x: bg.minX + 1, y: rowRect.origin.y))
-                line.line(to: NSPoint(x: bg.maxX - 1, y: rowRect.origin.y))
-                line.lineWidth = 0.5
+                line.move(to: NSPoint(x: bg.minX + 1, y: rect.minY))
+                line.line(to: NSPoint(x: bg.maxX - 1, y: rect.minY))
+                line.lineWidth = isHeaderDivider ? 1.5 : 0.5
                 line.stroke()
             }
 
-            // Draw cell content at calculated column positions, vertically centered
+            // Cell content, vertically centered
             let font = row.isHeader ? table.headerFont : table.font
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: table.textColor,
             ]
-            let cellPadding: CGFloat = 14
             let textHeight = font.ascender - font.descender
 
             var cellX = bg.minX
@@ -574,7 +575,7 @@ class PulpInternalTextView: NSTextView {
 
                 let cellTextRect = NSRect(
                     x: cellX + cellPadding,
-                    y: rowRect.origin.y + (rowRect.height - textHeight) / 2,
+                    y: rect.minY + (rowHeight - textHeight) / 2,
                     width: max(0, colWidth - cellPadding * 2),
                     height: textHeight
                 )
@@ -765,8 +766,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
-        {
+           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
             let indent = extractIndent(from: line)
             let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
             if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -778,8 +778,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         }
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let indent = (line as NSString).substring(with: match.range(at: 1))
             let bullet = (line as NSString).substring(with: match.range(at: 2))
             let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)
