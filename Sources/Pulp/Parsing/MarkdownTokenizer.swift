@@ -162,8 +162,7 @@ public final class MarkdownTokenizer: Sendable {
             var j = i + 2
             while j < lines.count,
                   !isInsideCodeBlock(lines[j].range, codeBlockRanges: codeBlockRanges),
-                  isTableRow(lines[j].content)
-            {
+                  isTableRow(lines[j].content) {
                 var rowPipes: [NSRange] = []
                 collectPipeRanges(line: lines[j], into: &rowPipes)
                 tokens.append(MarkdownToken(

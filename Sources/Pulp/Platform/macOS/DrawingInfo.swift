@@ -14,6 +14,9 @@ struct DrawingInfo {
         let columnWidths: [CGFloat]
         let rows: [TableRowData]
         let borderColor: PulpColor
+        let strongBorderColor: PulpColor
+        let headerBackground: PulpColor
+        let rowStripeBackground: PulpColor
         let font: PulpFont
         let headerFont: PulpFont
         let textColor: PulpColor

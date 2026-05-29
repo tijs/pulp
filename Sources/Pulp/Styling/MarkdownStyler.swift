@@ -91,7 +91,7 @@ public final class MarkdownStyler {
             return [StyleRun(
                 range: contentRange,
                 attributes: [
-                    .backgroundColor: PulpColor.systemYellow.withAlphaComponent(0.3),
+                    .backgroundColor: theme.highlightColor,
                 ]
             )]
 
