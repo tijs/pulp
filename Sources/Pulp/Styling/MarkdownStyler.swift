@@ -253,10 +253,15 @@ public final class MarkdownStyler {
     }
 
     private func tableRowRuns(token: MarkdownToken, isHeader: Bool) -> [StyleRun] {
+        // Tall, fixed row height gives cells vertical breathing room. The overlay
+        // draws cell text centered in this space; the invisible source occupies it.
+        let rowHeight = theme.bodySize * 2.4
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.paragraphSpacing = 0
         paragraphStyle.headIndent = 12
         paragraphStyle.firstLineHeadIndent = 12
+        paragraphStyle.minimumLineHeight = rowHeight
+        paragraphStyle.maximumLineHeight = rowHeight
 
         var runs: [StyleRun] = []
 

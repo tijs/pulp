@@ -557,12 +557,14 @@ class PulpInternalTextView: NSTextView {
                 line.stroke()
             }
 
-            // Draw cell content at calculated column positions
+            // Draw cell content at calculated column positions, vertically centered
             let font = row.isHeader ? table.headerFont : table.font
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: table.textColor,
             ]
+            let cellPadding: CGFloat = 14
+            let textHeight = font.ascender - font.descender
 
             var cellX = bg.minX
             for (colIndex, cell) in row.cells.enumerated() {
@@ -571,10 +573,10 @@ class PulpInternalTextView: NSTextView {
                     : 0
 
                 let cellTextRect = NSRect(
-                    x: cellX + 10,
-                    y: rowRect.origin.y + (rowRect.height - font.pointSize) / 2 - 2,
-                    width: max(0, colWidth - 20),
-                    height: font.pointSize + 4
+                    x: cellX + cellPadding,
+                    y: rowRect.origin.y + (rowRect.height - textHeight) / 2,
+                    width: max(0, colWidth - cellPadding * 2),
+                    height: textHeight
                 )
                 (cell as NSString).draw(in: cellTextRect, withAttributes: attrs)
 
