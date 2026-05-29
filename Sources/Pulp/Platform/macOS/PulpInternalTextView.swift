@@ -49,17 +49,26 @@ class PulpInternalTextView: NSTextView {
 
     private func drawTableControl(_ control: DrawingInfo.TableControl) {
         let rect = control.buttonRect
-        control.accentColor.withAlphaComponent(0.9).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+        let path = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
+
+        // Subtle drop shadow so the button reads as a floating control on the cell.
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+        shadow.shadowBlurRadius = 3
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.set()
+        control.accentColor.setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
 
         // Three white dots (⋯) to signal a menu.
         NSColor.white.setFill()
-        let dotSize: CGFloat = 2.2
-        let gap: CGFloat = 3.5
+        let dotSize: CGFloat = 3
+        let gap: CGFloat = 5
         let centerY = rect.midY - dotSize / 2
-        let startX = rect.midX - gap - dotSize / 2
-        for i in 0 ..< 3 {
-            let dot = NSRect(x: startX + CGFloat(i) * gap - dotSize / 2 + dotSize / 2, y: centerY, width: dotSize, height: dotSize)
+        for i in -1 ... 1 {
+            let dot = NSRect(x: rect.midX + CGFloat(i) * gap - dotSize / 2, y: centerY, width: dotSize, height: dotSize)
             NSBezierPath(ovalIn: dot).fill()
         }
     }
@@ -243,7 +252,9 @@ class PulpInternalTextView: NSTextView {
 
         let point = convert(event.locationInWindow, from: nil)
 
-        if let control = drawingInfo.tableControl, control.buttonRect.insetBy(dx: -4, dy: -4).contains(point) {
+        if let control = drawingInfo.tableControl, control.buttonRect.insetBy(dx: -6, dy: -6).contains(point) {
+            // Commit any in-progress cell edit before opening the structural menu.
+            parent.commitCellEdit()
             parent.showTableMenu(from: self, at: NSPoint(x: control.buttonRect.midX, y: control.buttonRect.maxY))
             return
         }

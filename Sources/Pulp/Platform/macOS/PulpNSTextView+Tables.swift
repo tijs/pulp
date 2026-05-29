@@ -6,11 +6,11 @@ import Foundation
 /// the macOS editor. Split out of PulpNSTextView to keep that file focused.
 extension PulpNSTextView {
     /// The control button is shown for the active cell — the one last clicked (so
-    /// it survives after a cell edit commits) or, failing that, the cell the caret
-    /// sits in (keyboard navigation). Hidden while the inline editor field is open
-    /// (the field covers that cell).
+    /// it survives after a cell edit commits and is visible *while* editing too),
+    /// or, failing that, the cell the caret sits in (keyboard navigation). The
+    /// inline editor field is inset on the right so the control stays clickable.
     func tableControlInfo() -> DrawingInfo.TableControl? {
-        guard isEditable, cellEditor == nil else { return nil }
+        guard isEditable else { return nil }
 
         if let cell = activeCell {
             return controlButton(tableRange: cell.tableRange, sourceRow: cell.rowIndex, columnIndex: cell.columnIndex)
@@ -62,9 +62,9 @@ extension PulpNSTextView {
         let cellRight = cellX + colWidth
         let cellTop = tableTop + CGFloat(displayRow) * rowHeight
 
-        let buttonSize: CGFloat = 16
+        let buttonSize: CGFloat = 24
         let buttonRect = NSRect(
-            x: cellRight - buttonSize - 4,
+            x: cellRight - buttonSize - 6,
             y: cellTop + (rowHeight - buttonSize) / 2,
             width: buttonSize,
             height: buttonSize
@@ -171,11 +171,14 @@ extension PulpNSTextView {
         let pad = Self.cellTextPadding
         let cell = hit.cellRect
         // -3 compensates for NSTextField's internal text inset so the first glyph
-        // lands at the same x the renderer used (cell.minX + pad).
+        // lands at the same x the renderer used (cell.minX + pad). Reserve room on
+        // the right (controlReserve) so the in-cell control button stays visible
+        // and clickable while editing.
+        let controlReserve: CGFloat = 34
         let field = SeamlessCellField(frame: NSRect(
             x: cell.minX + pad - 3,
             y: cell.minY,
-            width: max(20, cell.width - pad * 2 + 6),
+            width: max(20, cell.width - pad - 3 - controlReserve),
             height: cell.height
         ))
         field.stringValue = current
