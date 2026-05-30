@@ -5,31 +5,44 @@ struct ContentView: View {
     @State private var text = """
 # Welcome to Pulp
 
-An inline Markdown editor built as an open-source Swift Package.
+An inline Markdown editor built as an open-source Swift Package. This document
+showcases every element in Pulp's Markdown flavor.
 
 ## Text Formatting
 
-This editor supports **bold**, *italic*, and ***bold italic*** text. You can also use ~~strikethrough~~ for deleted text and ==highlighted text== for emphasis with a colored background.
+Asterisk emphasis: **bold**, *italic*, and ***bold italic***.
+
+Underscore emphasis also works: __bold__, _italic_, and ___bold italic___ — but
+intra-word underscores are left alone, so `snake_case` and file_name_2 stay plain.
+
+You can also use ~~strikethrough~~ for deleted text and ==highlighted text== for
+emphasis with a colored background.
 
 ## Unordered Lists
 
 - First item
-- Second item
-- Third item with **bold** inside
+- Second item with **bold** inside
+- Nested levels indent by depth:
+  - Second level
+    - Third level
+- Bullets can use `-`, `*`, or `+`
 
 ## Ordered Lists
 
 1. First step
 2. Second step
+   1. Nested step
+   2. Another nested step
 3. Third step
 
 ## Task Lists
 
 - [ ] Build the tokenizer
 - [x] Set up the Swift Package
-- [ ] Add iOS support
 - [x] Implement marker shrinking
-- [ ] Add syntax highlighting
+  - [x] Nested checked subtask
+  - [ ] Nested unchecked subtask
+- [ ] Add iOS support
 
 ## Code
 
@@ -43,11 +56,34 @@ struct Note {
 }
 ```
 
-## Links and Tags
+## Math
 
-Visit [Pulp on GitHub](https://github.com/example/pulp) for more info.
+Inline math renders as a styled span (not typeset): $E = mc^2$ and $a_n + b_n$.
+A `$5 and $10` price is left as plain text.
+
+Block math spans multiple lines:
+
+$$
+\\int_0^1 f(x)\\,dx = F(1) - F(0)
+$$
+
+## Links, Images, and Tags
+
+Inline link: visit [Pulp on GitHub](https://github.com/example/pulp).
+
+Bare autolinks are detected too: https://swift.org and http://example.com.
+
+Reference-style link: see [the Swift forums][forums] for discussion.
+
+[forums]: https://forums.swift.org
+
+An image: ![Pulp logo](https://example.com/logo.png)
 
 Organize with #project and #ideas tags. Nested tags like #work/meetings work too.
+
+A claim that needs a source.[^1]
+
+[^1]: Footnotes render their marker and definition.
 
 ## Blockquotes
 
@@ -86,6 +122,12 @@ Below the line.
 #### H4 Heading
 ##### H5 Heading
 ###### H6 Heading
+
+Setext H1
+=========
+
+Setext H2
+---------
 """
 
     @State private var derivedTitle = ""
