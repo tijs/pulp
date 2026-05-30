@@ -210,8 +210,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
-            {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -427,15 +426,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -525,8 +522,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
-        {
+           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
             let indent = extractIndent(from: line)
             let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
             if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -538,8 +534,7 @@ extension PulpNSTextView: NSTextViewDelegate {
         }
 
         if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let indent = (line as NSString).substring(with: match.range(at: 1))
             let bullet = (line as NSString).substring(with: match.range(at: 2))
             let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)

@@ -1,7 +1,17 @@
 import Foundation
 
 public enum ContentAnalyzer {
+    /// Normalize line endings to LF. Swift treats `\r\n` as a single grapheme,
+    /// so without this `split(separator: "\n")` and `pear-core` (which splits on
+    /// the LF byte) would derive different titles for CRLF input. Both sides
+    /// normalize first to stay in lockstep.
+    private static func normalizingNewlines(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
     public static func extractTitle(from text: String) -> String {
+        let text = normalizingNewlines(text)
         // First non-empty line that isn't table/structural markup.
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -18,6 +28,7 @@ public enum ContentAnalyzer {
     }
 
     public static func extractTags(from text: String) -> [String] {
+        let text = normalizingNewlines(text)
         let pattern = "(?<=\\s|^)#([a-zA-Z][a-zA-Z0-9_/]*)"
         guard let regex = try? NSRegularExpression(
             pattern: pattern,

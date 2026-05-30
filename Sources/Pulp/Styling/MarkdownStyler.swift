@@ -40,6 +40,9 @@ public final class MarkdownStyler {
         if let inline = inlineEmphasisRuns(for: token) {
             return inline
         }
+        if let linkFamily = linkFamilyRuns(for: token) {
+            return linkFamily
+        }
         switch token.type {
         case let .heading(level):
             let paragraphStyle = NSMutableParagraphStyle()
@@ -83,16 +86,6 @@ public final class MarkdownStyler {
                 attributes: [
                     .font: theme.codeFont(),
                     .paragraphStyle: paragraphStyle,
-                ]
-            )]
-
-        case .link:
-            let contentRange = contentRange(token: token)
-            return [StyleRun(
-                range: contentRange,
-                attributes: [
-                    .foregroundColor: theme.accentColor,
-                    .underlineStyle: NSUnderlineStyle.single.rawValue,
                 ]
             )]
 
@@ -141,8 +134,65 @@ public final class MarkdownStyler {
         case .tableDataRow:
             return tableRowRuns(token: token, isHeader: false)
 
-        case .bold, .italic, .boldItalic, .strikethrough, .highlight:
-            return [] // handled by inlineEmphasisRuns
+        case .bold, .italic, .boldItalic, .strikethrough, .highlight,
+             .link, .image, .autolink, .inlineMath, .blockMath,
+             .setextUnderline, .referenceLink, .linkDefinition,
+             .footnoteReference, .footnoteDefinition:
+            return [] // handled by inlineEmphasisRuns / linkFamilyRuns
+        }
+    }
+
+    /// Content styling for the link/media family and the reference/footnote/setext
+    /// forms. Returns nil for tokens it doesn't handle, so `contentRuns` falls
+    /// through to its own switch. Split out of `contentRuns` to keep that method's
+    /// complexity manageable as coverage grows.
+    private func linkFamilyRuns(for token: MarkdownToken) -> [StyleRun]? {
+        let linkAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: theme.accentColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ]
+        switch token.type {
+        case .link, .referenceLink:
+            return [StyleRun(range: contentRange(token: token), attributes: linkAttributes)]
+
+        case .autolink:
+            // Whole span is the URL — no markers to shrink.
+            return [StyleRun(range: token.range, attributes: linkAttributes)]
+
+        case .image:
+            // Recognition + styling only (no inline thumbnail — deferred). Alt
+            // text is tinted; the `![`/`](url)` machinery shrinks as markers.
+            // Distinguished from links by tint + no underline.
+            return [StyleRun(range: contentRange(token: token), attributes: [.foregroundColor: theme.accentColor])]
+
+        case .inlineMath, .blockMath:
+            // Distinct styled span — code font, secondary tint. Not typeset.
+            // Markers (`$` / `$$`) shrink like other inline markers.
+            return [StyleRun(range: contentRange(token: token), attributes: [
+                .font: theme.codeFont(),
+                .foregroundColor: theme.secondaryTextColor,
+            ])]
+
+        case .setextUnderline:
+            // Underline line is hidden (the title line above carries the heading
+            // style). Whole line shrinks via markerRuns; clear it here too.
+            return [StyleRun(range: token.range, attributes: [
+                .foregroundColor: PulpColor.clear, .font: theme.markerFont(),
+            ])]
+
+        case .footnoteReference:
+            return [StyleRun(range: token.range, attributes: [
+                .foregroundColor: theme.accentColor,
+                .font: PulpFont.systemFont(ofSize: theme.bodySize * Self.footnoteReferenceScale),
+            ])]
+
+        case .linkDefinition, .footnoteDefinition:
+            // The marker (`[ref]:` / `[^id]:`) shrinks via markerRuns; the body
+            // recedes to secondary so definitions don't compete with prose.
+            return [StyleRun(range: token.range, attributes: [.foregroundColor: theme.secondaryTextColor])]
+
+        default:
+            return nil
         }
     }
 
@@ -155,15 +205,12 @@ public final class MarkdownStyler {
             return [StyleRun(range: content, attributes: [.font: PulpFont.boldSystemFont(ofSize: theme.bodySize)])]
 
         case .italic:
-            let descriptor = theme.bodyFont().fontDescriptor.adding(symbolicTraits: .italic)
-            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? theme.bodyFont()
-            return [StyleRun(range: content, attributes: [.font: font])]
+            return [StyleRun(range: content, attributes: [.font: italicized(theme.bodyFont())])]
 
         case .boldItalic:
-            let bold = PulpFont.boldSystemFont(ofSize: theme.bodySize)
-            let descriptor = bold.fontDescriptor.adding(symbolicTraits: .italic)
-            let font = PulpFont(descriptor: descriptor, size: theme.bodySize) ?? bold
-            return [StyleRun(range: content, attributes: [.font: font])]
+            return [StyleRun(range: content, attributes: [
+                .font: italicized(PulpFont.boldSystemFont(ofSize: theme.bodySize)),
+            ])]
 
         case .strikethrough:
             return [StyleRun(range: content, attributes: [
@@ -179,8 +226,21 @@ public final class MarkdownStyler {
         }
     }
 
+    /// Per-nesting-level indentation step, in points. Depth 0 keeps the original
+    /// flat 28pt baseline so existing single-level lists are unchanged.
+    private static let listIndentStep: CGFloat = 24
+    private static let listBaseIndent: CGFloat = 28
+    /// Hanging-indent gap reserved for an ordered-list number, in points.
+    private static let orderedListMarkerGap: CGFloat = 20
+    /// Font-size multiple for a footnote reference marker (smaller, superscript-ish).
+    private static let footnoteReferenceScale: CGFloat = 0.85
+
+    private func listIndent(depth: Int) -> CGFloat {
+        Self.listBaseIndent + CGFloat(max(0, depth)) * Self.listIndentStep
+    }
+
     private func listItemRuns(token: MarkdownToken) -> [StyleRun] {
-        let indent: CGFloat = 28
+        let indent = listIndent(depth: token.indentDepth)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.headIndent = indent
         paragraphStyle.firstLineHeadIndent = indent
@@ -207,7 +267,7 @@ public final class MarkdownStyler {
     }
 
     private func taskItemRuns(token: MarkdownToken, checked: Bool) -> [StyleRun] {
-        let indent: CGFloat = 28
+        let indent = listIndent(depth: token.indentDepth)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.headIndent = indent
         paragraphStyle.firstLineHeadIndent = indent
@@ -285,10 +345,13 @@ public final class MarkdownStyler {
     }
 
     private func orderedListRuns(token: MarkdownToken) -> [StyleRun] {
-        let indent: CGFloat = 28
+        let depthOffset = CGFloat(max(0, token.indentDepth)) * Self.listIndentStep
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.headIndent = indent
-        paragraphStyle.firstLineHeadIndent = 8
+        paragraphStyle.headIndent = listIndent(depth: token.indentDepth)
+        // The number hangs `orderedListMarkerGap` points left of the wrapped-text
+        // indent and shifts right with depth, so the gap stays constant per level.
+        paragraphStyle.firstLineHeadIndent =
+            (Self.listBaseIndent - Self.orderedListMarkerGap) + depthOffset
         paragraphStyle.paragraphSpacing = 2
 
         var runs: [StyleRun] = []
@@ -314,7 +377,8 @@ public final class MarkdownStyler {
     private func markerRuns(for token: MarkdownToken) -> [StyleRun] {
         switch token.type {
         case .listItem, .taskItem, .orderedListItem, .horizontalRule,
-             .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
+             .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow,
+             .setextUnderline:
             []
         case .codeBlock:
             token.markerRanges.map { markerRange in
@@ -352,11 +416,20 @@ public final class MarkdownStyler {
     }
 }
 
-#if canImport(AppKit)
-private extension NSFontDescriptor {
-    func adding(symbolicTraits traits: NSFontDescriptor.SymbolicTraits) -> NSFontDescriptor {
-        let combined = self.symbolicTraits.union(traits)
-        return self.withSymbolicTraits(combined)
+private extension MarkdownStyler {
+    /// Return an italic variant of `font`, preserving its other traits (e.g. bold).
+    /// Falls back to the original font if the platform can't synthesize italics.
+    func italicized(_ font: PulpFont) -> PulpFont {
+        #if canImport(AppKit)
+        let traits = font.fontDescriptor.symbolicTraits.union(.italic)
+        let descriptor = font.fontDescriptor.withSymbolicTraits(traits)
+        return PulpFont(descriptor: descriptor, size: font.pointSize) ?? font
+        #elseif canImport(UIKit)
+        let traits = font.fontDescriptor.symbolicTraits.union(.traitItalic)
+        guard let descriptor = font.fontDescriptor.withSymbolicTraits(traits) else { return font }
+        return PulpFont(descriptor: descriptor, size: font.pointSize)
+        #else
+        return font
+        #endif
     }
 }
-#endif
