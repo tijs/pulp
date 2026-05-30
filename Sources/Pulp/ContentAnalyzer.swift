@@ -2,7 +2,7 @@ import Foundation
 
 public enum ContentAnalyzer {
     /// Normalize line endings to LF. Swift treats `\r\n` as a single grapheme,
-    /// so without this `split(separator: "\n")` and `pear-core` (which splits on
+    /// so without this `split(separator: "\n")` and `kiem-core` (which splits on
     /// the LF byte) would derive different titles for CRLF input. Both sides
     /// normalize first to stay in lockstep.
     private static func normalizingNewlines(_ text: String) -> String {

@@ -208,7 +208,7 @@ struct TableInCellControlsTests {
     | Name | Description              | Rating |
     |------|--------------------------|--------|
     | Pulp | Inline Markdown editor   | 5      |
-    | Pear | P2P notes with CRDT sync | 4      |
+    | Kiem | P2P notes with CRDT sync | 4      |
     """
 
     private func paddedEditor() -> PulpNSTextView {

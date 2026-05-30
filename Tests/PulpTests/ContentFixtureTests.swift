@@ -3,10 +3,10 @@ import Foundation
 import Testing
 
 /// Drives `ContentAnalyzer` against the shared, language-neutral fixture contract
-/// (`Fixtures/content-derivation.json`). Pear's Rust `pear-core` runs the exact
+/// (`Fixtures/content-derivation.json`). Kiem's Rust `kiem-core` runs the exact
 /// same fixtures, so this suite is what guarantees the Swift and Rust title/tag
 /// rules stay in lockstep. The fixture file here is a vendored copy of the
-/// canonical contract; `pear-core`'s reconciliation test asserts it matches.
+/// canonical contract; `kiem-core`'s reconciliation test asserts it matches.
 @Suite("ContentAnalyzer shared contract")
 struct ContentFixtureTests {
     struct ContentFixture: Decodable, Sendable {

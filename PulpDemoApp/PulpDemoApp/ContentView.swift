@@ -69,7 +69,7 @@ A second table with longer content:
 | Name | Description                    | Rating |
 |------|--------------------------------|--------|
 | Pulp | Inline Markdown editor         | 5      |
-| Pear | P2P notes with CRDT sync       | 4      |
+| Kiem | P2P notes with CRDT sync       | 4      |
 | Bear | Cloud-based notes app          | 5      |
 
 ## Horizontal Rules
@@ -99,7 +99,7 @@ Below the line.
             Divider()
             PulpEditorView(
                 text: $text,
-                theme: PearTheme.theme,
+                theme: KiemTheme.theme,
                 delegate: DemoDelegate(
                     onTitle: { derivedTitle = $0 },
                     onTags: { derivedTags = $0 },

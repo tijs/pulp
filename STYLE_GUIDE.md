@@ -11,8 +11,8 @@ system semantic colors) so it looks at home in any app. **Branding is the consum
 job** — the host app constructs a `PulpTheme` with its own accent and passes it via
 `PulpEditorView(text:theme:)` or `PulpNSTextView(theme:)`.
 
-Pear supplies a pear-green accent. That green is defined in the *consuming app*
-(see `PearTheme` in the demo app), not in the Pulp library — keeping brand identity
+Kiem supplies a kiem-green accent. That green is defined in the *consuming app*
+(see `KiemTheme` in the demo app), not in the Pulp library — keeping brand identity
 out of the shared component. `PulpPalette.dynamicColor(light:dark:)` is exposed so
 consumers can build appearance-adaptive brand colors without reimplementing the
 platform shim.
