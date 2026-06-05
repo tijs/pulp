@@ -120,7 +120,14 @@ public final class MarkdownTokenizer: Sendable {
             parseBlockLevel(nsText, line: line, into: &tokens)
         }
 
-        parseInlineElements(nsText, excluding: codeBlockRanges + tableRanges + mathBlockRanges, into: &tokens)
+        // Definition lines (`[ref]: url`, `[^id]: …`) own their whole line and
+        // must be exempt from inline parsing — otherwise the URL/body inside them
+        // gets autolinked or emphasized on top of the definition styling.
+        let definitionRanges = tokens
+            .filter { $0.type == .linkDefinition || $0.type == .footnoteDefinition }
+            .map(\.range)
+
+        parseInlineElements(nsText, excluding: blockExcluded + definitionRanges, into: &tokens)
 
         tokens.sort { $0.range.location < $1.range.location }
         return tokens

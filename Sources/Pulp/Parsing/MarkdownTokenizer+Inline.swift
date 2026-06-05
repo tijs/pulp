@@ -60,11 +60,18 @@ extension MarkdownTokenizer {
         for match in matches {
             if isExcluded(match.range, by: excluding) { continue }
             if isOverlapping(match.range, with: tokens, types: [.footnoteReference]) { continue }
-            // Markers: `[` (1), `][ref]` opener (3), `]` close (5).
+            // Shrink the `[` before the visible text and the whole `][ref]` tail
+            // (connector + ref label + closing `]`) so only the visible text shows
+            // — otherwise the ref label leaks (e.g. "the Swift forumsforums").
+            // Group 2 is the visible text; groups 3..5 span `][`, ref, `]`.
+            let openBracket = match.range(at: 1)
+            let tailStart = match.range(at: 3).location
+            let tailEnd = match.range(at: 5).location + match.range(at: 5).length
+            let tail = NSRange(location: tailStart, length: tailEnd - tailStart)
             tokens.append(MarkdownToken(
                 type: .referenceLink(url: nil),
                 range: match.range,
-                markerRanges: [match.range(at: 1), match.range(at: 3), match.range(at: 5)]
+                markerRanges: [openBracket, tail]
             ))
         }
     }
