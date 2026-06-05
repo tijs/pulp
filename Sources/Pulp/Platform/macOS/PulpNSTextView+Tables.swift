@@ -296,6 +296,16 @@ extension PulpNSTextView {
         textView.drawingInfo.tableInfos
     }
 
+    /// Custom-drawn list bullets currently laid out (for geometry tests).
+    var bulletItemsForTesting: [DrawingInfo.BulletItem] {
+        textView.drawingInfo.bulletItems
+    }
+
+    /// Custom-drawn task checkboxes currently laid out (for geometry tests).
+    var checkboxItemsForTesting: [DrawingInfo.CheckboxItem] {
+        textView.drawingInfo.checkboxItems
+    }
+
     /// The in-cell control button currently shown (caret-in-cell), if any.
     var tableControlForTesting: DrawingInfo.TableControl? {
         textView.drawingInfo.tableControl

@@ -297,6 +297,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
 
     // MARK: - Drawing Info
 
+    /// Custom-drawn list-marker geometry. Glyphs sit `glyph width + gap` left of
+    /// the text indent so the marker hangs in the margin just before its text.
+    private static let bulletDotSize: CGFloat = 6
+    private static let bulletTextGap: CGFloat = 8
+    private static let checkboxSize: CGFloat = 16
+    private static let checkboxTextGap: CGFloat = 5
+
     func updateDrawingInfo() {
         guard let layoutManager = textView.layoutManager,
               textView.textContainer != nil else { return }
@@ -317,21 +324,30 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                 }
             case .listItem:
                 if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
-                    let dotSize: CGFloat = 6
-                    info.bulletRects.append(NSRect(
-                        x: containerOrigin.x + 14,
-                        y: rect.origin.y + (rect.height - dotSize) / 2,
-                        width: dotSize, height: dotSize
+                    // Sit the glyph in the margin just left of the text indent so
+                    // nested bullets align under their text at every depth. The x
+                    // is `textIndent - (glyph width + gap)`, derived from the same
+                    // depth indent the styler uses for the text.
+                    let textIndent = MarkdownStyler.listIndent(depth: token.indentDepth)
+                    let x = containerOrigin.x + textIndent - (Self.bulletDotSize + Self.bulletTextGap)
+                    info.bulletItems.append(.init(
+                        rect: NSRect(
+                            x: x,
+                            y: rect.origin.y + (rect.height - Self.bulletDotSize) / 2,
+                            width: Self.bulletDotSize, height: Self.bulletDotSize
+                        ),
+                        style: .forDepth(token.indentDepth)
                     ))
                 }
             case let .taskItem(checked):
                 if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
-                    let size: CGFloat = 16
+                    let textIndent = MarkdownStyler.listIndent(depth: token.indentDepth)
+                    let x = containerOrigin.x + textIndent - (Self.checkboxSize + Self.checkboxTextGap)
                     info.checkboxItems.append(.init(
                         rect: NSRect(
-                            x: containerOrigin.x + 7,
-                            y: rect.origin.y + (rect.height - size) / 2,
-                            width: size, height: size
+                            x: x,
+                            y: rect.origin.y + (rect.height - Self.checkboxSize) / 2,
+                            width: Self.checkboxSize, height: Self.checkboxSize
                         ),
                         checked: checked
                     ))

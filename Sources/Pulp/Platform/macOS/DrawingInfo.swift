@@ -7,6 +7,28 @@ struct DrawingInfo {
         let checked: Bool
     }
 
+    /// Bullet glyph for an unordered-list item. The shape cycles by nesting depth,
+    /// matching common editors (Bear): filled dot → hollow ring → filled diamond.
+    enum BulletStyle {
+        case filledDot
+        case ring
+        case diamond
+
+        /// The glyph for a given nesting depth (depth 0 = filled dot).
+        static func forDepth(_ depth: Int) -> BulletStyle {
+            switch max(0, depth) % 3 {
+            case 1: return .ring
+            case 2: return .diamond
+            default: return .filledDot
+            }
+        }
+    }
+
+    struct BulletItem {
+        let rect: NSRect
+        let style: BulletStyle
+    }
+
     struct TableInfo {
         let backgroundRect: NSRect
         let rowHeight: CGFloat
@@ -36,7 +58,7 @@ struct DrawingInfo {
     }
 
     var codeBlockRects: [NSRect] = []
-    var bulletRects: [NSRect] = []
+    var bulletItems: [BulletItem] = []
     var checkboxItems: [CheckboxItem] = []
     var horizontalRuleRects: [NSRect] = []
     var tableInfos: [TableInfo] = []

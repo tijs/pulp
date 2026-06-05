@@ -228,16 +228,21 @@ public final class MarkdownStyler {
 
     /// Per-nesting-level indentation step, in points. Depth 0 keeps the original
     /// flat 28pt baseline so existing single-level lists are unchanged.
-    private static let listIndentStep: CGFloat = 24
-    private static let listBaseIndent: CGFloat = 28
+    static let listIndentStep: CGFloat = 24
+    static let listBaseIndent: CGFloat = 28
     /// Hanging-indent gap reserved for an ordered-list number, in points.
     private static let orderedListMarkerGap: CGFloat = 20
     /// Font-size multiple for a footnote reference marker (smaller, superscript-ish).
     private static let footnoteReferenceScale: CGFloat = 0.85
 
-    private func listIndent(depth: Int) -> CGFloat {
-        Self.listBaseIndent + CGFloat(max(0, depth)) * Self.listIndentStep
+    /// Text head-indent for a list/task item at the given nesting depth. Shared
+    /// with the custom-drawn bullet/checkbox positioning (in PulpNSTextView) so
+    /// the glyph and its text stay aligned at every depth.
+    static func listIndent(depth: Int) -> CGFloat {
+        listBaseIndent + CGFloat(max(0, depth)) * listIndentStep
     }
+
+    private func listIndent(depth: Int) -> CGFloat { Self.listIndent(depth: depth) }
 
     private func listItemRuns(token: MarkdownToken) -> [StyleRun] {
         let indent = listIndent(depth: token.indentDepth)

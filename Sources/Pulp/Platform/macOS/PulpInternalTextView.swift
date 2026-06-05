@@ -33,9 +33,8 @@ class PulpInternalTextView: NSTextView {
             NSRect(x: hrRect.origin.x + 40, y: hrRect.midY, width: hrRect.width - 80, height: 1).fill()
         }
 
-        for bulletRect in drawingInfo.bulletRects where bulletRect.intersects(dirtyRect) {
-            theme.accentColor.setFill()
-            NSBezierPath(ovalIn: bulletRect).fill()
+        for bullet in drawingInfo.bulletItems where bullet.rect.intersects(dirtyRect) {
+            drawBullet(bullet, theme: theme)
         }
 
         for item in drawingInfo.checkboxItems where item.rect.intersects(dirtyRect) {
@@ -165,6 +164,29 @@ class PulpInternalTextView: NSTextView {
                 line.lineWidth = 0.5
                 line.stroke()
             }
+        }
+    }
+
+    private func drawBullet(_ bullet: DrawingInfo.BulletItem, theme: PulpTheme) {
+        theme.accentColor.setFill()
+        theme.accentColor.setStroke()
+        switch bullet.style {
+        case .filledDot:
+            NSBezierPath(ovalIn: bullet.rect).fill()
+        case .ring:
+            // Hollow ring: stroke an inset oval so the line weight stays crisp.
+            let ring = NSBezierPath(ovalIn: bullet.rect.insetBy(dx: 0.75, dy: 0.75))
+            ring.lineWidth = 1.5
+            ring.stroke()
+        case .diamond:
+            let r = bullet.rect
+            let diamond = NSBezierPath()
+            diamond.move(to: NSPoint(x: r.midX, y: r.minY))
+            diamond.line(to: NSPoint(x: r.maxX, y: r.midY))
+            diamond.line(to: NSPoint(x: r.midX, y: r.maxY))
+            diamond.line(to: NSPoint(x: r.minX, y: r.midY))
+            diamond.close()
+            diamond.fill()
         }
     }
 
