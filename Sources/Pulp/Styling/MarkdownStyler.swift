@@ -165,13 +165,18 @@ public final class MarkdownStyler {
             // Distinguished from links by tint + no underline.
             return [StyleRun(range: contentRange(token: token), attributes: [.foregroundColor: theme.accentColor])]
 
-        case .inlineMath, .blockMath:
-            // Distinct styled span — code font, secondary tint. Not typeset.
-            // Markers (`$` / `$$`) shrink like other inline markers.
+        case .inlineMath:
+            // Math is shown italic in the accent color — visually distinct from
+            // inline code (which is monospace on a fill). Not typeset; the `$`
+            // markers shrink like other inline markers.
             return [StyleRun(range: contentRange(token: token), attributes: [
-                .font: theme.codeFont(),
-                .foregroundColor: theme.secondaryTextColor,
+                .font: italicized(theme.bodyFont()),
+                .foregroundColor: theme.accentColor,
             ])]
+
+        case .blockMath:
+            // Block math styling is handled by blockMathRuns (multi-line block).
+            return blockMathRuns(token: token)
 
         case .setextUnderline:
             // Underline line is hidden (the title line above carries the heading
@@ -194,6 +199,25 @@ public final class MarkdownStyler {
         default:
             return nil
         }
+    }
+
+    /// Style runs for a `$$…$$` block-math token. The LaTeX is not typeset; it is
+    /// rendered as a distinct centered, italic, accent-tinted block so it reads as
+    /// a math display rather than prose. The `$$` delimiter lines shrink to
+    /// invisible via markerRuns.
+    private func blockMathRuns(token: MarkdownToken) -> [StyleRun] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.paragraphSpacingBefore = theme.bodySize * 0.6
+        paragraphStyle.paragraphSpacing = theme.bodySize * 0.6
+        return [StyleRun(
+            range: token.range,
+            attributes: [
+                .font: italicized(theme.bodyFont()),
+                .foregroundColor: theme.accentColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+        )]
     }
 
     /// Inline character emphasis applied to a token's content range. Returns nil
