@@ -186,9 +186,12 @@ public final class MarkdownStyler {
             ])]
 
         case .footnoteReference:
-            return [StyleRun(range: token.range, attributes: [
+            // Only the id (between the shrunk `[^` / `]` markers) shows, raised as
+            // a small superscript in the accent color, like Bear.
+            return [StyleRun(range: contentRange(token: token), attributes: [
                 .foregroundColor: theme.accentColor,
                 .font: PulpFont.systemFont(ofSize: theme.bodySize * Self.footnoteReferenceScale),
+                .baselineOffset: theme.bodySize * 0.35,
             ])]
 
         case .linkDefinition, .footnoteDefinition:

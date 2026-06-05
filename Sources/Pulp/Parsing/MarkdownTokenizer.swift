@@ -73,8 +73,10 @@ public final class MarkdownTokenizer: Sendable {
     static let referenceLinkRegex = try! NSRegularExpression(pattern: "(\\[)([^\\]\\n]{1,256})(\\]\\[)([^\\]\\n]{0,256})(\\])")
     static let linkDefinitionRegex = try! NSRegularExpression(pattern: "^(\\[)([^\\]\\n]{1,256})(\\]:\\s*)(\\S+)\\s*$")
     // Footnote reference `[^id]` and definition `[^id]: text`. Ids are bounded.
-    static let footnoteDefinitionRegex = try! NSRegularExpression(pattern: "^(\\[\\^[^\\]\\n]{1,64}\\]:)\\s")
-    static let footnoteReferenceRegex = try! NSRegularExpression(pattern: "(\\[\\^[^\\]\\n]{1,64}\\])")
+    // Footnote definition `[^id]: …` — group 1 `[^`, group 2 id, group 3 `]:`.
+    static let footnoteDefinitionRegex = try! NSRegularExpression(pattern: "^(\\[\\^)([^\\]\\n]{1,64})(\\]:)\\s")
+    // Footnote reference `[^id]` — group 1 `[^`, group 2 id, group 3 `]`.
+    static let footnoteReferenceRegex = try! NSRegularExpression(pattern: "(\\[\\^)([^\\]\\n]{1,64})(\\])")
     // Setext underline lines: a run of `=` (H1) or `-` (H2), nothing else.
     static let setextH1Regex = try! NSRegularExpression(pattern: "^=+\\s*$")
     static let setextH2Regex = try! NSRegularExpression(pattern: "^-+\\s*$")

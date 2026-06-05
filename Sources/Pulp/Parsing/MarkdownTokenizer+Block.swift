@@ -232,12 +232,17 @@ extension MarkdownTokenizer {
         guard let match = Self.footnoteDefinitionRegex.firstMatch(
             in: line.content, range: NSRange(location: 0, length: nsContent.length)
         ) else { return false }
-        let markerInDoc = NSRange(location: line.range.location + match.range(at: 1).location,
-                                  length: match.range(at: 1).length)
+        // Shrink the `[^` prefix (group 1) and the `]` of `]:` (group 3's first
+        // char), leaving the id and `:` visible so the definition reads "1: …",
+        // matching Bear. Group 3 is `]:`.
+        let prefix = NSRange(location: line.range.location + match.range(at: 1).location,
+                             length: match.range(at: 1).length)
+        let closeBracket = NSRange(location: line.range.location + match.range(at: 3).location,
+                                   length: 1)
         tokens.append(MarkdownToken(
             type: .footnoteDefinition,
             range: line.range,
-            markerRanges: [markerInDoc]
+            markerRanges: [prefix, closeBracket]
         ))
         return true
     }

@@ -45,10 +45,12 @@ extension MarkdownTokenizer {
             if isExcluded(range, by: excluding) { continue }
             let after = range.location + range.length
             if after < text.length, text.character(at: after) == 0x3A { continue } // ':' → definition
+            // Shrink the `[^` prefix and `]` suffix so only the id shows, raised
+            // as a superscript by the styler.
             tokens.append(MarkdownToken(
                 type: .footnoteReference,
                 range: range,
-                markerRanges: []
+                markerRanges: [match.range(at: 1), match.range(at: 3)]
             ))
         }
     }
