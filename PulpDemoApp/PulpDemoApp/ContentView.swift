@@ -122,12 +122,6 @@ Below the line.
 #### H4 Heading
 ##### H5 Heading
 ###### H6 Heading
-
-Setext H1
-=========
-
-Setext H2
----------
 """
 
     @State private var derivedTitle = ""

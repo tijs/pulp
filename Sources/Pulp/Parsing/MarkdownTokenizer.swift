@@ -77,9 +77,6 @@ public final class MarkdownTokenizer: Sendable {
     static let footnoteDefinitionRegex = try! NSRegularExpression(pattern: "^(\\[\\^)([^\\]\\n]{1,64})(\\]:)\\s")
     // Footnote reference `[^id]` — group 1 `[^`, group 2 id, group 3 `]`.
     static let footnoteReferenceRegex = try! NSRegularExpression(pattern: "(\\[\\^)([^\\]\\n]{1,64})(\\])")
-    // Setext underline lines: a run of `=` (H1) or `-` (H2), nothing else.
-    static let setextH1Regex = try! NSRegularExpression(pattern: "^=+\\s*$")
-    static let setextH2Regex = try! NSRegularExpression(pattern: "^-+\\s*$")
     static let tableSeparatorRegex = try! NSRegularExpression(
         pattern: "^\\|?[\\s-]*\\|[\\s:|-]+\\|?\\s*$"
     )
@@ -106,18 +103,9 @@ public final class MarkdownTokenizer: Sendable {
         var tableRanges: [NSRange] = []
         parseTables(lines: lines, codeBlockRanges: codeBlockRanges, into: &tokens, tableRanges: &tableRanges)
 
-        // Setext headings consume a title line + an underline line, so they are
-        // detected over the line array and recorded as consumed to keep the
-        // per-line block pass (which would otherwise see the `-` underline as a
-        // horizontal rule) from re-tokenizing them.
-        var consumedLineRanges: [NSRange] = []
-        parseSetextHeadings(lines: lines, excluding: codeBlockRanges + tableRanges + mathBlockRanges,
-                            into: &tokens, consumed: &consumedLineRanges)
-
         // A line is skipped by the per-line block pass if it falls inside any
-        // already-claimed region: fenced code, a table, block math, or a setext
-        // heading's two consumed lines.
-        let blockExcluded = codeBlockRanges + tableRanges + mathBlockRanges + consumedLineRanges
+        // already-claimed region: fenced code, a table, or block math.
+        let blockExcluded = codeBlockRanges + tableRanges + mathBlockRanges
         for line in lines where !isInside(line.range, anyOf: blockExcluded) {
             parseBlockLevel(nsText, line: line, into: &tokens)
         }
@@ -229,7 +217,7 @@ public final class MarkdownTokenizer: Sendable {
 
     /// Whether `range` intersects any range in the set. The single membership
     /// primitive used for every "is this position inside an already-claimed
-    /// region" test — code fences, tables, block math, consumed setext lines, and
+    /// region" test — code fences, tables, block math, definition lines, and
     /// the inline exclusion set all funnel through here.
     func isInside(_ range: NSRange, anyOf ranges: [NSRange]) -> Bool {
         ranges.contains { NSIntersectionRange($0, range).length > 0 }

@@ -8,7 +8,7 @@ import Foundation
 import Testing
 
 /// Tests for the expanded Markdown coverage (underscore emphasis, nested lists,
-/// autolinks, math, images, setext/reference/footnote forms). See the plan at
+/// autolinks, math, images, reference/footnote forms). See the plan at
 /// docs/plans/2026-05-29-001-feat-pulp-markdown-coverage-plan.md.
 @Suite("Markdown coverage")
 struct MarkdownCoverageTests {
@@ -230,39 +230,32 @@ struct MarkdownCoverageTests {
         #expect(result.contains { if case .link = $0.type { return true }; return false })
     }
 
-    // MARK: - U7: Setext headings, reference links, footnotes
+    // MARK: - U7: reference links, footnotes (setext headings intentionally dropped)
 
     private func headingLevels(_ text: String) -> [Int] {
         tokens(text).compactMap { if case let .heading(level) = $0.type { return level }; return nil }
     }
 
-    @Test func setextH1() {
-        #expect(headingLevels("Title\n===").contains(1))
-        #expect(tokens("Title\n===").contains { $0.type == .setextUnderline })
+    @Test func setextUnderlineNotTreatedAsHeading() {
+        // Setext headings are unsupported (Bear ignores them): `Title\n===` is just
+        // two normal text lines — no heading is derived from the underline.
+        #expect(headingLevels("Title\n===").isEmpty)
+        #expect(headingLevels("Title\n---").isEmpty)
     }
 
-    @Test func setextH2() {
-        #expect(headingLevels("Title\n---").contains(2))
+    @Test func dashRuleStaysHorizontalRule() {
+        // `---` on its own line is a horizontal rule.
+        #expect(tokens("\n---").contains { $0.type == .horizontalRule })
     }
 
-    @Test func dashRuleWithoutTitleStaysHorizontalRule() {
-        // `---` with a blank line above is a horizontal rule, not setext H2.
-        let result = tokens("\n---")
-        #expect(result.contains { $0.type == .horizontalRule })
-        #expect(!result.contains { $0.type == .setextUnderline })
-    }
-
-    @Test func bulletListNotSetext() {
-        // `- item` under text must stay a list item, never a setext underline.
+    @Test func bulletListUnderTextStaysListItem() {
         let result = tokens("text\n- item")
         #expect(result.contains { $0.type == .listItem })
-        #expect(!result.contains { $0.type == .setextUnderline })
     }
 
-    @Test func tableSeparatorNotSetext() {
+    @Test func tableSeparatorStaysTable() {
         let result = tokens("| a | b |\n| --- | --- |\n| 1 | 2 |")
         #expect(result.contains { if case .table = $0.type { return true }; return false })
-        #expect(!result.contains { $0.type == .setextUnderline })
     }
 
     @Test func referenceLinkRecognized() {
@@ -287,23 +280,6 @@ struct MarkdownCoverageTests {
         let result = tokens("[^1]: the note")
         #expect(result.contains { $0.type == .footnoteDefinition })
         #expect(!result.contains { $0.type == .footnoteReference })
-    }
-
-    @Test func setextInsideCodeBlockNotParsed() {
-        let result = tokens("```\nTitle\n===\n```")
-        #expect(!result.contains { $0.type == .setextUnderline })
-    }
-
-    @Test func setextH2DoesNotAlsoEmitHorizontalRule() {
-        // The consumed-line guard must stop the `---` underline being re-read as HR.
-        let result = tokens("Title\n---")
-        #expect(!result.contains { $0.type == .horizontalRule })
-    }
-
-    @Test func setextDoesNotConsumeLinkDefinition() {
-        // A `[ref]: url` line followed by `===` must stay a link definition.
-        let result = tokens("[ref]: https://example.com\n===")
-        #expect(result.contains { $0.type == .linkDefinition })
     }
 
     // MARK: - Review fixes: inline-math exemption, ReDoS, depth on paragraph path
@@ -365,12 +341,6 @@ struct MarkdownCoverageTests {
     @Test func inlineMathStyledWithCodeFont() {
         let token = tokens("a $x^2$ b").first { $0.type == .inlineMath }!
         #expect(styleAttributes(token, .font) != nil)
-    }
-
-    @Test func setextUnderlineStyledClear() {
-        let token = tokens("Title\n===").first { $0.type == .setextUnderline }!
-        let color = styleAttributes(token, .foregroundColor)
-        #expect(color as? PulpColor == PulpColor.clear)
     }
 
     @Test func orderedListMarkerRangeIsTheNumber() {

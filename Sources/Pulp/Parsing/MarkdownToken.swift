@@ -24,9 +24,6 @@ public enum MarkdownTokenType: Equatable, Sendable {
     case tableHeaderRow
     case tableSeparatorRow
     case tableDataRow
-    /// `=`/`-` underline of a setext heading (the marker line; the title line is
-    /// emitted as a `.heading`).
-    case setextUnderline
     case referenceLink(url: String?)
     case linkDefinition
     case footnoteReference

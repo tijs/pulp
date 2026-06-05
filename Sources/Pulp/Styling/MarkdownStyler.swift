@@ -136,13 +136,13 @@ public final class MarkdownStyler {
 
         case .bold, .italic, .boldItalic, .strikethrough, .highlight,
              .link, .image, .autolink, .inlineMath, .blockMath,
-             .setextUnderline, .referenceLink, .linkDefinition,
+             .referenceLink, .linkDefinition,
              .footnoteReference, .footnoteDefinition:
             return [] // handled by inlineEmphasisRuns / linkFamilyRuns
         }
     }
 
-    /// Content styling for the link/media family and the reference/footnote/setext
+    /// Content styling for the link/media family and the reference/footnote
     /// forms. Returns nil for tokens it doesn't handle, so `contentRuns` falls
     /// through to its own switch. Split out of `contentRuns` to keep that method's
     /// complexity manageable as coverage grows.
@@ -177,13 +177,6 @@ public final class MarkdownStyler {
         case .blockMath:
             // Block math styling is handled by blockMathRuns (multi-line block).
             return blockMathRuns(token: token)
-
-        case .setextUnderline:
-            // Underline line is hidden (the title line above carries the heading
-            // style). Whole line shrinks via markerRuns; clear it here too.
-            return [StyleRun(range: token.range, attributes: [
-                .foregroundColor: PulpColor.clear, .font: theme.markerFont(),
-            ])]
 
         case .footnoteReference:
             // Only the id (between the shrunk `[^` / `]` markers) shows, raised as
@@ -409,8 +402,7 @@ public final class MarkdownStyler {
     private func markerRuns(for token: MarkdownToken) -> [StyleRun] {
         switch token.type {
         case .listItem, .taskItem, .orderedListItem, .horizontalRule,
-             .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow,
-             .setextUnderline:
+             .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
             []
         case .codeBlock:
             token.markerRanges.map { markerRange in
