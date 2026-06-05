@@ -45,5 +45,59 @@ struct MathStylingTests {
         let color = contentAttributes("a $x^2$ b", type: .inlineMath)?[.foregroundColor] as? PulpColor
         #expect(color == MarkdownStyler().theme.accentColor)
     }
+
+    @Test func blockMathShrinksWholeDelimiterLines() {
+        // The opening `$$` line shrinks fully (delimiter + newline = 3 chars) so no
+        // stray blank line remains; the closing marker covers at least the `$$`
+        // (its trailing newline is clipped when it sits at the token's end).
+        let doc = "x\n$$\na = b\n$$\ny"
+        let token = tokenizer.tokenize(doc).first { $0.type == .blockMath }
+        #expect(token != nil)
+        #expect(token?.markerRanges.count == 2)
+        // Opening marker covers the whole `$$\n` line (not just the 2 `$$` chars).
+        #expect(token?.markerRanges.first?.length == 3)
+        #expect(token?.markerRanges.allSatisfy { $0.length >= 2 } == true)
+    }
+
+    @Test func blockMathContentIsCenteredDisplay() {
+        let doc = "$$\na = b\n$$"
+        let token = tokenizer.tokenize(doc).first { $0.type == .blockMath }!
+        let runs = styler.styleRuns(for: [token])
+        let para = runs.compactMap { $0.attributes[.paragraphStyle] as? NSParagraphStyle }.first
+        #expect(para?.alignment == .center)
+    }
+
+    @Test func singleLineBlockMathKeepsContentVisible() {
+        // `$$a = b$$` on one line must NOT shrink its whole line (which would hide
+        // the content); only the `$$` delimiters shrink.
+        let doc = "$$a = b$$"
+        let token = tokenizer.tokenize(doc).first { $0.type == .blockMath }
+        #expect(token != nil)
+        // Both markers are just the 2-char `$$` delimiters, not the whole line.
+        #expect(token?.markerRanges.allSatisfy { $0.length == 2 } == true)
+    }
+
+    @Test func blockMathMarkersStayWithinToken() {
+        // Markers must never extend past the token range into the next paragraph.
+        let doc = "x\n$$\na = b\n$$\ny"
+        let token = tokenizer.tokenize(doc).first { $0.type == .blockMath }!
+        let tokenEnd = token.range.location + token.range.length
+        for marker in token.markerRanges {
+            #expect(marker.location >= token.range.location)
+            #expect(marker.location + marker.length <= tokenEnd)
+        }
+    }
+
+    @Test func multilineBlockMathKeepsAllContentLines() {
+        // A genuinely multi-line $$ body must tokenize as one block spanning all
+        // its lines (so every line renders, none dropped).
+        let doc = "$$\na = b\nc = d\n$$"
+        let token = tokenizer.tokenize(doc).first { $0.type == .blockMath }
+        #expect(token != nil)
+        let ns = doc as NSString
+        let covered = ns.substring(with: token!.range)
+        #expect(covered.contains("a = b"))
+        #expect(covered.contains("c = d"))
+    }
 }
 #endif

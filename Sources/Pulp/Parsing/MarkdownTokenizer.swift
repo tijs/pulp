@@ -167,10 +167,31 @@ public final class MarkdownTokenizer: Sendable {
         for match in matches {
             let fullRange = match.range
             if isExcluded(fullRange, by: excluding) { continue }
+            let openDelim = match.range(at: 1)
+            let closeDelim = match.range(at: 3)
+            let openLine = text.lineRange(for: openDelim)
+            let closeLine = text.lineRange(for: closeDelim)
+            let markerRanges: [NSRange]
+            if openLine.location == closeLine.location {
+                // Single-line form `$$a = b$$`: the open and close delimiters share
+                // one line. Shrinking the whole line would hide the content too, so
+                // shrink only the `$$` delimiters and leave the body visible.
+                markerRanges = [openDelim, closeDelim]
+            } else {
+                // Multi-line form: shrink the ENTIRE opening and closing `$$` lines
+                // (delimiter plus newline) so the collapsed markers leave no stray
+                // blank lines — mirroring how fenced code blocks shrink fence lines.
+                // Clip each marker to the token so it never bleeds into the next
+                // paragraph's separator.
+                markerRanges = [
+                    NSIntersectionRange(openLine, fullRange),
+                    NSIntersectionRange(closeLine, fullRange),
+                ]
+            }
             tokens.append(MarkdownToken(
                 type: .blockMath,
                 range: fullRange,
-                markerRanges: [match.range(at: 1), match.range(at: 3)]
+                markerRanges: markerRanges
             ))
             mathBlockRanges.append(fullRange)
         }
