@@ -262,7 +262,18 @@ public final class MarkdownStyler {
         listBaseIndent + CGFloat(max(0, depth)) * listIndentStep
     }
 
-    private func listIndent(depth: Int) -> CGFloat { Self.listIndent(depth: depth) }
+    /// A freshly continued list/task line is all marker ("- [ ] " and nothing
+    /// else). Shrunk markers would collapse that line's fragment to the marker
+    /// font's height, stacking its custom-drawn checkbox/bullet onto the
+    /// neighboring line — so list-family paragraphs pin the body line height.
+    private func listLineMinimumHeight() -> CGFloat {
+        let font = theme.bodyFont()
+        return (font.ascender - font.descender + font.leading).rounded(.up)
+    }
+
+    private func listIndent(depth: Int) -> CGFloat {
+        Self.listIndent(depth: depth)
+    }
 
     private func listItemRuns(token: MarkdownToken) -> [StyleRun] {
         let indent = listIndent(depth: token.indentDepth)
@@ -270,6 +281,7 @@ public final class MarkdownStyler {
         paragraphStyle.headIndent = indent
         paragraphStyle.firstLineHeadIndent = indent
         paragraphStyle.paragraphSpacing = 2
+        paragraphStyle.minimumLineHeight = listLineMinimumHeight()
 
         var runs: [StyleRun] = []
 
@@ -297,6 +309,7 @@ public final class MarkdownStyler {
         paragraphStyle.headIndent = indent
         paragraphStyle.firstLineHeadIndent = indent
         paragraphStyle.paragraphSpacing = 2
+        paragraphStyle.minimumLineHeight = listLineMinimumHeight()
 
         var runs: [StyleRun] = []
 
@@ -378,6 +391,7 @@ public final class MarkdownStyler {
         paragraphStyle.firstLineHeadIndent =
             (Self.listBaseIndent - Self.orderedListMarkerGap) + depthOffset
         paragraphStyle.paragraphSpacing = 2
+        paragraphStyle.minimumLineHeight = listLineMinimumHeight()
 
         var runs: [StyleRun] = []
 

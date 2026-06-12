@@ -45,6 +45,30 @@ struct NestedListLayoutTests {
         #expect(abs((bullets[2].rect.minX - bullets[1].rect.minX) - step) < 0.5)
     }
 
+    @Test func emptyTaskItemKeepsItsLineCheckboxesDoNotOverlap() {
+        // Enter after a task item continues the list with an empty "- [ ] "
+        // line. That line is all marker; shrinking must not collapse it,
+        // or its checkbox draws on top of the neighbor's.
+        let view = makeEditor("- [ ] some task list\n- [ ] ")
+        let boxes = view.checkboxItemsForTesting
+        #expect(boxes.count == 2)
+        if boxes.count == 2 {
+            #expect(!boxes[0].rect.intersects(boxes[1].rect))
+            // The empty item's box sits a full line below, not beside.
+            #expect(boxes[1].rect.minY >= boxes[0].rect.maxY - 1)
+        }
+    }
+
+    @Test func emptyBulletItemKeepsItsLineBulletsDoNotOverlap() {
+        let view = makeEditor("- some item\n- ")
+        let bullets = view.bulletItemsForTesting
+        #expect(bullets.count == 2)
+        if bullets.count == 2 {
+            #expect(!bullets[0].rect.intersects(bullets[1].rect))
+            #expect(bullets[1].rect.minY >= bullets[0].rect.maxY - 1)
+        }
+    }
+
     @Test func checkboxesIndentWithDepth() {
         let view = makeEditor("- [ ] a\n  - [x] b\n    - [ ] c\n")
         let boxes = view.checkboxItemsForTesting
