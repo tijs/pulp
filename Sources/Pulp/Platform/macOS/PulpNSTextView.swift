@@ -39,6 +39,11 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
     }
 
     let textView: PulpInternalTextView
+    /// The editor owns its undo stack via `undoManager(for:)` below. A windowless
+    /// `NSTextView` otherwise resolves no undo manager from the responder chain
+    /// (so grouped programmatic edits register nothing), which both breaks undo in
+    /// any non-windowed embedding and makes the behavior untestable headlessly.
+    let editorUndoManager = UndoManager()
     private let scrollView: NSScrollView
     private let tokenizer = MarkdownTokenizer()
     private let styler: MarkdownStyler
@@ -512,6 +517,10 @@ extension PulpNSTextView: NSTextViewDelegate {
         handleSelectionChange()
     }
 
+    public func undoManager(for view: NSTextView) -> UndoManager? {
+        editorUndoManager
+    }
+
     public func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         if let urlString = link as? String, let url = URL(string: urlString) {
             delegate?.editor(self, didTapLink: url)
@@ -527,6 +536,12 @@ extension PulpNSTextView: NSTextViewDelegate {
     public func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             return handleNewline(textView)
+        }
+        if commandSelector == #selector(NSResponder.deleteBackward(_:)) {
+            return handleDeletion(textView, direction: .backward)
+        }
+        if commandSelector == #selector(NSResponder.deleteForward(_:)) {
+            return handleDeletion(textView, direction: .forward)
         }
         return false
     }
