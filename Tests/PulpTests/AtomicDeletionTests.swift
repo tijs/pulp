@@ -43,10 +43,20 @@ struct AtomicDeletionTests {
 
     @Test("One ⌘Z restores the deleted checkbox")
     func undoRestoresCheckboxInOneStep() {
+        // A windowless NSTextView resolves no undo manager, so host the view in
+        // an offscreen window — this exercises the *standard* responder-chain
+        // undo manager (no production override), the same one a real app uses.
         let view = makeEditor("- [ ] task", caret: 6)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        window.contentView = view
+        view.selectedRange = NSRange(location: 6, length: 0)
+
         #expect(view.deleteForTesting(.backward))
         #expect(view.text == "task")
-        view.editorUndoManager.undo()
+        view.textView.undoManager?.undo()
         #expect(view.text == "- [ ] task")
     }
 
@@ -97,6 +107,19 @@ struct AtomicDeletionTests {
         let view = makeEditor("hello", caret: 5)
         #expect(view.deleteForTesting(.backward) == false)
         #expect(view.text == "hell")
+    }
+
+    @Test("Deletion re-tokenizes the live text rather than trusting a stale snapshot")
+    func deletionIgnoresStaleCachedTokens() {
+        // `cachedTokens` is refreshed by an async restyle, so it can lag the live
+        // string when edits land within one run-loop turn. Simulate the worst
+        // case — an empty snapshot — and confirm the delete path still removes the
+        // checkbox prefix by tokenizing the current text. (Trusting `cachedTokens`
+        // here would resolve no atoms and fall back to a one-character delete.)
+        let view = makeEditor("- [ ] task", caret: 6)
+        view.cachedTokens = []
+        #expect(view.deleteForTesting(.backward))
+        #expect(view.text == "task")
     }
 }
 #endif

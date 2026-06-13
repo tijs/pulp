@@ -15,9 +15,16 @@ extension PulpNSTextView {
     func handleDeletion(_ textView: NSTextView, direction: DeletionDirection) -> Bool {
         guard cellEditor == nil, !textView.hasMarkedText() else { return false }
 
+        // Tokenize the live string here rather than reading `cachedTokens`: that
+        // snapshot is only refreshed by the *async* restyle, so a synchronous
+        // edit earlier in the same run-loop turn (e.g. `handleNewline`'s list
+        // continuation, or key-repeat) would leave it stale — applying a stale
+        // range to the now-different storage deletes the wrong span or, if the
+        // document shrank, overruns it. (Mirrors the synchronous re-tokenize the
+        // table-commit path already does for the same reason.)
         let action = DeletionIntent.resolve(
             text: textView.string as NSString,
-            tokens: cachedTokens,
+            tokens: tokenizer.tokenize(textView.string),
             caret: textView.selectedRange(),
             direction: direction
         )
@@ -26,8 +33,9 @@ extension PulpNSTextView {
         case .characterwise:
             return false
         case let .ranges(ranges):
-            applyAtomicDeletion(ranges, direction: direction, in: textView)
-            return true
+            // If the change is vetoed, fall through to the default delete rather
+            // than reporting the keypress handled (which would swallow it).
+            return applyAtomicDeletion(ranges, direction: direction, in: textView)
         }
     }
 
@@ -37,8 +45,12 @@ extension PulpNSTextView {
     /// exactly. The grouped `shouldChangeText(inRanges:…)`/`didChangeText` pair is
     /// what registers that single undo step; the text-storage delegate's own echo
     /// then reports the net change to the consumer binding.
-    private func applyAtomicDeletion(_ ranges: [NSRange], direction: DeletionDirection, in textView: NSTextView) {
-        guard !ranges.isEmpty, let textStorage = textView.textStorage else { return }
+    ///
+    /// Returns whether the edit was performed — `false` when there is nothing to
+    /// do or the change is vetoed, so the caller can let the default delete run
+    /// rather than swallowing the keypress.
+    private func applyAtomicDeletion(_ ranges: [NSRange], direction: DeletionDirection, in textView: NSTextView) -> Bool {
+        guard !ranges.isEmpty, let textStorage = textView.textStorage else { return false }
 
         let caret = DeletionIntent.caretAfterDeletion(
             ranges: ranges,
@@ -49,7 +61,7 @@ extension PulpNSTextView {
         textView.breakUndoCoalescing()
         let nsRanges = ranges.map { NSValue(range: $0) }
         let replacements = [String](repeating: "", count: ranges.count)
-        guard textView.shouldChangeText(inRanges: nsRanges, replacementStrings: replacements) else { return }
+        guard textView.shouldChangeText(inRanges: nsRanges, replacementStrings: replacements) else { return false }
 
         textStorage.beginEditing()
         for range in ranges { // descending order — earlier deletions don't shift later ones
@@ -58,6 +70,7 @@ extension PulpNSTextView {
         textStorage.endEditing()
         textView.didChangeText()
         textView.setSelectedRange(NSRange(location: caret, length: 0))
+        return true
     }
 
     // MARK: - Verification Seam
