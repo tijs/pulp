@@ -2,7 +2,7 @@ import Foundation
 
 /// Which way a delete keypress runs: backspace (`.backward`) or forward-delete /
 /// fn⌫ (`.forward`).
-public enum DeletionDirection: Sendable {
+enum DeletionDirection: Sendable {
     case backward
     case forward
 }
@@ -13,7 +13,7 @@ public enum DeletionDirection: Sendable {
 /// - `.ranges`: delete exactly these ranges as one undoable edit. The ranges are
 ///   **descending by location and non-overlapping**, so a caller can apply them
 ///   in order without recomputing offsets.
-public enum DeletionAction: Equatable, Sendable {
+enum DeletionAction: Equatable, Sendable {
     case characterwise
     case ranges([NSRange])
 }
@@ -27,7 +27,7 @@ public enum DeletionAction: Equatable, Sendable {
 /// the current token snapshot and route the result. Implements R1–R5 from the
 /// plan (block prefixes, inline pairs, bracketed inlines, whole-line markers,
 /// and forward-delete mirrors).
-public enum DeletionIntent {
+enum DeletionIntent {
     /// Resolve what a delete keypress should do at `caret` given `tokens`.
     ///
     /// - Parameters:
@@ -36,7 +36,7 @@ public enum DeletionIntent {
     ///   - caret: the current selection. A non-empty selection is always
     ///     `.characterwise` — deleting a selection deletes the selection.
     ///   - direction: backspace or forward-delete.
-    public static func resolve(
+    static func resolve(
         text: NSString,
         tokens: [MarkdownToken],
         caret: NSRange,
@@ -62,6 +62,10 @@ public enum DeletionIntent {
         var best: [NSRange]?
         var bestSpan = Int.max
         for token in tokens {
+            // Only a token whose range spans the caret can have a marker
+            // boundary at it — skip the rest before building any atoms.
+            let lower = token.range.location
+            guard pos >= lower, pos <= lower + token.range.length else { continue }
             for atom in atoms(for: token, in: text) {
                 let trigger = direction == .backward ? atom.backwardTrigger : atom.forwardTrigger
                 guard trigger == pos, !atom.ranges.isEmpty else { continue }
@@ -83,7 +87,7 @@ public enum DeletionIntent {
     /// by the deleted length that lay before it (content to the left is kept and
     /// shifts with the caret). Forward deletes whatever sits ahead of the caret,
     /// so the caret stays put.
-    public static func caretAfterDeletion(
+    static func caretAfterDeletion(
         ranges: [NSRange],
         from pos: Int,
         direction: DeletionDirection
@@ -133,16 +137,21 @@ public enum DeletionIntent {
                 ranges: [token.range]
             )]
 
-        // R4 — whole-line markers.
-        case .horizontalRule:
-            return wholeLineAtoms(token.markerRanges, in: text)
-        case .codeBlock:
+        // R4 — whole-line markers. HR and code-fence lines share the rule;
+        // block math branches on single- vs multi-line internally.
+        case .horizontalRule, .codeBlock:
             return wholeLineAtoms(token.markerRanges, in: text)
         case .blockMath:
             return blockMathAtoms(token, in: text)
 
-        // Tables, hashtags, and definition lines have no atomic-deletion rule.
-        default:
+        // Intentionally not atomic: tables have their own structural editing,
+        // hashtags carry no markers, and definition lines render as plain
+        // secondary text. Enumerated explicitly (no `default`) so adding a new
+        // `MarkdownTokenType` is a compile error here — forcing a deliberate
+        // choice rather than a silent characterwise fallback that could strand a
+        // shrunk marker run.
+        case .hashtag, .table, .tableHeaderRow, .tableSeparatorRow, .tableDataRow,
+             .linkDefinition, .footnoteDefinition:
             return []
         }
     }
