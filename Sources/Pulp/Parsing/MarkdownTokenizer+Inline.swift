@@ -301,9 +301,9 @@ extension MarkdownTokenizer {
         for match in matches {
             let range = match.range(at: 1)
             if isExcluded(range, by: excluding) { continue }
-            // Don't match heading markers
-            let lineStart = text.lineRange(for: NSRange(location: range.location, length: 0)).location
-            if range.location == lineStart { continue }
+            // Headings (`# `, `## `) are already excluded by the regex, which
+            // requires a letter immediately after `#`. A `#tag` at the start of a
+            // line is a real tag, so don't skip it.
             tokens.append(MarkdownToken(
                 type: .hashtag,
                 range: range,

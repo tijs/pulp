@@ -43,6 +43,26 @@ struct MarkdownTokenizerTests {
         #expect(italics[0].markerRanges.count == 2)
     }
 
+    /// A `*`-bulleted list item with italic content: `* *word*`. The bullet
+    /// asterisk must NOT be treated as an emphasis delimiter — the italic span is
+    /// `*word*`, leaving the list item intact. (Regression: previously the regex
+    /// matched `* *` and the real italic never parsed.)
+    @Test func italicInsideAsteriskBulletList() {
+        let tokens = tokenizer.tokenize("* *word*")
+        let italics = tokens.filter { $0.type == .italic }
+        #expect(italics.count == 1)
+        #expect(tokens.contains { $0.type == .listItem })
+        // The italic span covers `*word*` (offset 2), not the bullet at offset 0.
+        #expect(italics.first?.range == NSRange(location: 2, length: 6))
+    }
+
+    /// Flanking: an asterisk adjacent to whitespace is not a delimiter, so
+    /// `* foo *` (spaces hugging the stars) is not italic.
+    @Test func asteriskWithSurroundingSpacesIsNotItalic() {
+        let tokens = tokenizer.tokenize("a * foo * b")
+        #expect(!tokens.contains { $0.type == .italic })
+    }
+
     @Test func boldItalicText() {
         let tokens = tokenizer.tokenize("some ***bolditalic*** text")
         let bi = tokens.filter { $0.type == .boldItalic }
@@ -111,6 +131,21 @@ struct MarkdownTokenizerTests {
         let tokens = tokenizer.tokenize("# Heading")
         let tags = tokens.filter { $0.type == .hashtag }
         #expect(tags.isEmpty)
+    }
+
+    /// A `#tag` at the start of a line (or the document) is a real tag — only a
+    /// `#` *followed by a space* is a heading. Regression: line-start tags used
+    /// to be skipped.
+    @Test func hashtagAtLineStartIsTagged() {
+        let text = "#hello\n\nSome #tag\n\n#world"
+        let tags = tokenizer.tokenize(text).filter { $0.type == .hashtag }
+        #expect(tags.count == 3)
+    }
+
+    @Test func hashtagAtDocumentStartIsTagged() {
+        let tags = tokenizer.tokenize("#first thing").filter { $0.type == .hashtag }
+        #expect(tags.count == 1)
+        #expect(tags.first?.range == NSRange(location: 0, length: 6))
     }
 
     @Test func link() {

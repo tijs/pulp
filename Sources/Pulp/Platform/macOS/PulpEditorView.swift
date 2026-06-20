@@ -13,6 +13,30 @@ public final class PulpEditorController: ObservableObject {
         editor != nil
     }
 
+    // A flat 1:1 dispatch table, not branching logic — exempt from the
+    // cyclomatic-complexity rule, which counts each case as a branch.
+    // swiftlint:disable cyclomatic_complexity
+    /// The host-facing front door: perform a single typed formatting command.
+    /// A toolbar/menu calls this with a `PulpFormattingAction`; the controller
+    /// dispatches to the editor's command methods.
+    public func perform(_ action: PulpFormattingAction) {
+        switch action {
+        case .bold: editor?.toggleBold()
+        case .italic: editor?.toggleItalic()
+        case .strikethrough: editor?.toggleStrikethrough()
+        case .highlight: editor?.toggleHighlight()
+        case .inlineCode: editor?.toggleInlineCode()
+        case let .heading(level): editor?.setHeading(level: level)
+        case .bulletList: editor?.toggleUnorderedList()
+        case .numberList: editor?.toggleOrderedList()
+        case .taskList: editor?.toggleTaskList()
+        case .blockquote: editor?.toggleBlockquote()
+        case .link: editor?.insertLink()
+        case let .insertTable(rows, columns): editor?.insertTable(rows: rows, columns: columns)
+        }
+    }
+    // swiftlint:enable cyclomatic_complexity
+
     /// Insert a blank table at the caret. Defaults to a 3-column, 2-row table.
     public func insertTable(rows: Int = 2, columns: Int = 3) {
         editor?.insertTable(rows: rows, columns: columns)

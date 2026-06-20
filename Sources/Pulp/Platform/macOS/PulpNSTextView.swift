@@ -543,41 +543,17 @@ extension PulpNSTextView: NSTextViewDelegate {
         let lineRange = string.lineRange(for: NSRange(location: cursorPos, length: 0))
         let line = string.substring(with: lineRange)
 
-        if let regex = try? NSRegularExpression(pattern: "^(\\s*)- \\[[ xX]\\] "),
-           regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil {
-            let indent = extractIndent(from: line)
-            let afterCheckbox = line.replacingOccurrences(of: "^\\s*- \\[[ xX]\\] ", with: "", options: .regularExpression)
-            if afterCheckbox.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: lineRange.length))
-                return true
-            }
-            textView.insertText("\n\(indent)- [ ] ", replacementRange: textView.selectedRange())
+        switch ListContinuation.outcome(forLine: line) {
+        case .notInList:
+            return false
+        case .exitList:
+            // Empty item: clear the marker line and end the list.
+            textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: lineRange.length))
+            return true
+        case let .continueItem(insertion):
+            textView.insertText(insertion, replacementRange: textView.selectedRange())
             return true
         }
-
-        if let regex = try? NSRegularExpression(pattern: "^(\\s*)([-*+]) "),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-            let indent = (line as NSString).substring(with: match.range(at: 1))
-            let bullet = (line as NSString).substring(with: match.range(at: 2))
-            let afterBullet = line.replacingOccurrences(of: "^\\s*[-*+] ", with: "", options: .regularExpression)
-            if afterBullet.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                textView.insertText("\n", replacementRange: NSRange(location: lineRange.location, length: lineRange.length))
-                return true
-            }
-            textView.insertText("\n\(indent)\(bullet) ", replacementRange: textView.selectedRange())
-            return true
-        }
-
-        return false
-    }
-
-    private func extractIndent(from line: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: "^(\\s*)"),
-              let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        else {
-            return ""
-        }
-        return (line as NSString).substring(with: match.range(at: 1))
     }
 }
 #endif

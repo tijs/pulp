@@ -48,11 +48,10 @@ public enum ContentAnalyzer {
             let tagRange = match.range(at: 0)
             if isExcluded(tagRange, by: excludedRanges) { continue }
 
-            let lineStart = nsText.lineRange(
-                for: NSRange(location: tagRange.location, length: 0)
-            ).location
-            if tagRange.location == lineStart { continue }
-
+            // `# Heading` (a space after `#`) is excluded by the regex, which
+            // requires a letter right after `#`. A `#tag` at the start of a line
+            // or the document is a real tag, so it is not skipped — the
+            // `(?<=\s|^)` lookbehind already admits the line-start position.
             let tag = nsText.substring(with: match.range(at: 1))
             if !tags.contains(tag) {
                 tags.append(tag)

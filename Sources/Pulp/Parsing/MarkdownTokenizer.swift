@@ -21,7 +21,12 @@ public final class MarkdownTokenizer: Sendable {
     static let inlineCodeRegex = try! NSRegularExpression(pattern: "(`+)(.+?)(\\1)", options: .dotMatchesLineSeparators)
     static let boldItalicRegex = try! NSRegularExpression(pattern: "(\\*{3})(.+?)(\\*{3})")
     static let boldRegex = try! NSRegularExpression(pattern: "(\\*{2})(.+?)(\\*{2})")
-    static let italicRegex = try! NSRegularExpression(pattern: "(?<![*])(\\*)(?![*])(.+?)(?<![*])(\\*)(?![*])")
+    // CommonMark flanking: a `*` only opens emphasis when NOT followed by
+    // whitespace and only closes when NOT preceded by whitespace. This is what
+    // stops a list bullet (`* item`) or a stray `* foo *` from being read as
+    // italic — the asterisk adjacent to the space can't be a delimiter. (The
+    // `(?<![*])`/`(?![*])` guards still keep it from biting into `**bold**`.)
+    static let italicRegex = try! NSRegularExpression(pattern: "(?<![*])(\\*)(?![*\\s])(.+?)(?<![*\\s])(\\*)(?![*])")
     static let strikethroughRegex = try! NSRegularExpression(pattern: "(~~)(.+?)(~~)")
     static let highlightRegex = try! NSRegularExpression(pattern: "(==)(.+?)(==)")
     // Bracket/paren content bounded and newline-free to keep the per-keystroke

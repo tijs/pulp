@@ -56,9 +56,16 @@ struct ContentAnalyzerTests {
         #expect(tags == ["project"])
     }
 
-    @Test func headingMarkerNotTag() {
-        let tags = ContentAnalyzer.extractTags(from: "# Heading\n#not a tag at line start")
-        #expect(tags.isEmpty)
+    @Test func headingWithSpaceIsNotATag() {
+        // `# `/`## ` (space after the hashes) are headings, never tags...
+        #expect(ContentAnalyzer.extractTags(from: "# Heading\nbody").isEmpty)
+        #expect(ContentAnalyzer.extractTags(from: "## Section only").isEmpty)
+    }
+
+    @Test func tagAtLineStartIsExtracted() {
+        // ...but a `#tag` (letter after `#`) at a line/document start is a tag.
+        #expect(ContentAnalyzer.extractTags(from: "# Heading\n#not a tag at line start") == ["not"])
+        #expect(ContentAnalyzer.extractTags(from: "#first thing\nbody") == ["first"])
     }
 
     @Test func titleSkipsLeadingTable() {
