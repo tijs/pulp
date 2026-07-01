@@ -18,13 +18,25 @@ public enum ContentAnalyzer {
             if line.isEmpty { continue }
             if line.hasPrefix("|") { continue } // table row
             if line.allSatisfy({ $0 == "-" || $0 == "|" || $0 == ":" || $0 == " " }) { continue }
-            var title = line
-            if title.hasPrefix("# ") {
-                title = String(title.dropFirst(2))
-            }
-            return title.trimmingCharacters(in: .whitespaces)
+            return Self.strippingATXMarker(line).trimmingCharacters(in: .whitespaces)
         }
         return ""
+    }
+
+    /// Strip a leading ATX heading marker: 1–6 `#` followed by a space (matching
+    /// the render grammar `^(#{1,6})\s+`), so `## Roadmap` yields `Roadmap`.
+    /// Returns the line unchanged when it is not a heading (no `#`, 7+ `#`, or no
+    /// following space — a `#tag` line keeps its `#`). Mirrors Rust
+    /// `content::strip_atx_marker`.
+    private static func strippingATXMarker(_ line: String) -> String {
+        let hashes = line.prefix(while: { $0 == "#" }).count
+        if (1 ... 6).contains(hashes) {
+            let afterHashes = line.dropFirst(hashes)
+            if afterHashes.first == " " {
+                return String(afterHashes.dropFirst())
+            }
+        }
+        return line
     }
 
     public static func extractTags(from text: String) -> [String] {
