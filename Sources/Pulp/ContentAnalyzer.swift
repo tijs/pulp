@@ -73,7 +73,16 @@ public enum ContentAnalyzer {
     }
 
     public static func hasUncheckedTodos(in text: String) -> Bool {
-        text.contains("- [ ]")
+        // Anchored to a checkbox at line start (after optional leading
+        // whitespace), NOT a bare `- [ ]` substring — otherwise a note that
+        // merely mentions `- [ ]` in prose or inline code would count. Mirrors
+        // Rust `content::has_unchecked_todos`.
+        for rawLine in normalizingNewlines(text).split(separator: "\n", omittingEmptySubsequences: false) {
+            if rawLine.trimmingCharacters(in: .whitespaces).hasPrefix("- [ ]") {
+                return true
+            }
+        }
+        return false
     }
 
     private static func codeRanges(in text: String, nsText: NSString) -> [NSRange] {
