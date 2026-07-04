@@ -318,6 +318,10 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                 if let rect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
                     info.codeBlockRects.append(rect)
                 }
+            case .frontmatter:
+                if let rect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                    info.frontmatterRects.append(rect)
+                }
             case .horizontalRule:
                 if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
                     info.horizontalRuleRects.append(NSRect(x: 0, y: rect.origin.y, width: textView.bounds.width, height: rect.height))
@@ -419,8 +423,12 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let oldTags = _derivedTags
         let oldTodos = _hasUncheckedTodos
 
-        _derivedTitle = ContentAnalyzer.extractTitle(from: content)
-        _derivedTags = ContentAnalyzer.extractTags(from: content)
+        // Title/tags derive from the body with any leading frontmatter fence
+        // stripped (mirrors kiem-core) so a `---\nstatus: ...\n---` header
+        // never becomes the derived title.
+        let (_, rest) = ContentAnalyzer.parseFrontmatterStatus(from: content)
+        _derivedTitle = ContentAnalyzer.extractTitle(from: rest)
+        _derivedTags = ContentAnalyzer.extractTags(from: rest)
         _hasUncheckedTodos = ContentAnalyzer.hasUncheckedTodos(in: content)
 
         if _derivedTitle != oldTitle {

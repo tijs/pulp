@@ -66,6 +66,22 @@ public final class MarkdownStyler {
                 ]
             )]
 
+        case .frontmatter:
+            // Muted, slightly smaller text for the whole block; the fence
+            // lines themselves are then hidden by `markerRuns` (mirrors
+            // `.codeBlock`). The callout background/accent bar is drawn
+            // separately (`DrawingInfo.frontmatterRects`), not via attributes.
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.paragraphSpacing = theme.bodySize * 0.3
+            return [StyleRun(
+                range: token.range,
+                attributes: [
+                    .font: PulpFont.systemFont(ofSize: theme.bodySize * 0.85),
+                    .foregroundColor: theme.secondaryTextColor,
+                    .paragraphStyle: paragraphStyle,
+                ]
+            )]
+
         case .orderedListItem:
             return orderedListRuns(token: token)
 
@@ -418,7 +434,7 @@ public final class MarkdownStyler {
         case .listItem, .taskItem, .orderedListItem, .horizontalRule,
              .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
             []
-        case .codeBlock:
+        case .codeBlock, .frontmatter:
             token.markerRanges.map { markerRange in
                 StyleRun(
                     range: markerRange,

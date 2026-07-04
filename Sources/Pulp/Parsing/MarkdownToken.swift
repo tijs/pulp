@@ -28,6 +28,11 @@ public enum MarkdownTokenType: Equatable, Sendable {
     case linkDefinition
     case footnoteReference
     case footnoteDefinition
+    /// A leading `---`/`key: value`/`---` frontmatter fence at the very start
+    /// of the document (e.g. Kiem's `status: active` convention). Rendered as
+    /// one callout block rather than two separate horizontal rules with plain
+    /// text between them.
+    case frontmatter
 }
 
 public struct MarkdownToken: Equatable, Sendable {

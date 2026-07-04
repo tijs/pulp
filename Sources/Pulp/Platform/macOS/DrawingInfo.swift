@@ -58,6 +58,7 @@ struct DrawingInfo {
     }
 
     var codeBlockRects: [NSRect] = []
+    var frontmatterRects: [NSRect] = []
     var bulletItems: [BulletItem] = []
     var checkboxItems: [CheckboxItem] = []
     var horizontalRuleRects: [NSRect] = []

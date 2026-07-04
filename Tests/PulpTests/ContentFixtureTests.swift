@@ -15,6 +15,7 @@ struct ContentFixtureTests {
         let title: String
         let tags: [String]
         let hasUncheckedTodos: Bool
+        let status: String?
     }
 
     private static func loadFixtures() throws -> [ContentFixture] {
@@ -32,12 +33,14 @@ struct ContentFixtureTests {
     // test row — a failure names the exact case rather than burying it in a loop.
     @Test(arguments: try loadFixtures())
     func matchesSharedContract(_ fixture: ContentFixture) {
+        let (status, rest) = ContentAnalyzer.parseFrontmatterStatus(from: fixture.input)
+        #expect(status == fixture.status, "status mismatch for fixture \(fixture.name)")
         #expect(
-            ContentAnalyzer.extractTitle(from: fixture.input) == fixture.title,
+            ContentAnalyzer.extractTitle(from: rest) == fixture.title,
             "title mismatch for fixture \(fixture.name)"
         )
         #expect(
-            ContentAnalyzer.extractTags(from: fixture.input) == fixture.tags,
+            ContentAnalyzer.extractTags(from: rest) == fixture.tags,
             "tags mismatch for fixture \(fixture.name)"
         )
         #expect(

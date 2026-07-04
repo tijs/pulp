@@ -137,9 +137,9 @@ enum DeletionIntent {
                 ranges: [token.range]
             )]
 
-        // R4 — whole-line markers. HR and code-fence lines share the rule;
-        // block math branches on single- vs multi-line internally.
-        case .horizontalRule, .codeBlock:
+        // R4 — whole-line markers. HR, code-fence, and frontmatter-fence lines
+        // share the rule; block math branches on single- vs multi-line internally.
+        case .horizontalRule, .codeBlock, .frontmatter:
             return wholeLineAtoms(token.markerRanges, in: text)
         case .blockMath:
             return blockMathAtoms(token, in: text)

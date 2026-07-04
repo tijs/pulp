@@ -66,6 +66,16 @@ public final class MarkdownTokenizer: Sendable {
     static let blockMathRegex = try! NSRegularExpression(
         pattern: "(\\$\\$)([\\s\\S]+?)(\\$\\$)"
     )
+    // A leading frontmatter fence: `---`, any content, a closing `---` line.
+    // `\A` anchors to the very start of the document — a `---` fence anywhere
+    // else in the body is an ordinary horizontal rule, not frontmatter. `\r?\n`
+    // (not a plain `\n`) at each line break so a CRLF-saved fence still
+    // matches — this runs directly on the untouched text (offsets must stay
+    // valid for NSRange styling), so it can't normalize newlines up front the
+    // way `ContentAnalyzer.parseFrontmatterStatus` does.
+    static let frontmatterRegex = try! NSRegularExpression(
+        pattern: "\\A---\\r?\\n([\\s\\S]*?)\\r?\\n(---)[ \\t]*(?:\\r?\\n|\\z)"
+    )
     // Inline math `$…$`: single dollars, non-space just inside, no `$`/newline in
     // the content. Guards against currency such as `$5 and $10`.
     static let inlineMathRegex = try! NSRegularExpression(
@@ -104,13 +114,17 @@ public final class MarkdownTokenizer: Sendable {
         var mathBlockRanges: [NSRange] = []
         parseBlockMath(nsText, excluding: codeBlockRanges, into: &tokens, mathBlockRanges: &mathBlockRanges)
 
+        var frontmatterRanges: [NSRange] = []
+        parseFrontmatter(nsText, into: &tokens, frontmatterRanges: &frontmatterRanges)
+
         let lines = splitLines(nsText)
         var tableRanges: [NSRange] = []
         parseTables(lines: lines, codeBlockRanges: codeBlockRanges, into: &tokens, tableRanges: &tableRanges)
 
         // A line is skipped by the per-line block pass if it falls inside any
-        // already-claimed region: fenced code, a table, or block math.
-        let blockExcluded = codeBlockRanges + tableRanges + mathBlockRanges
+        // already-claimed region: fenced code, a table, block math, or a leading
+        // frontmatter fence.
+        let blockExcluded = codeBlockRanges + tableRanges + mathBlockRanges + frontmatterRanges
         for line in lines where !isInside(line.range, anyOf: blockExcluded) {
             parseBlockLevel(nsText, line: line, into: &tokens)
         }
@@ -197,6 +211,35 @@ public final class MarkdownTokenizer: Sendable {
             ))
             mathBlockRanges.append(fullRange)
         }
+    }
+
+    // MARK: - Frontmatter
+
+    /// A leading `---`/`key: value`/`---` fence, tokenized as one block so the
+    /// styler can render it as a single callout instead of two separate
+    /// horizontal rules with plain paragraph text between them. Only the
+    /// fence lines themselves are markers (hidden); the content between stays
+    /// visible — mirrors kiem-core's `parse_frontmatter_status`, a display-only
+    /// concern here (Pulp never extracts `status` itself).
+    private func parseFrontmatter(_ text: NSString, into tokens: inout [MarkdownToken], frontmatterRanges: inout [NSRange]) {
+        guard let match = Self.frontmatterRegex.firstMatch(
+            in: text as String, range: NSRange(location: 0, length: text.length)
+        ) else { return }
+        let fullRange = match.range
+        let openLine = text.lineRange(for: NSRange(location: 0, length: 0))
+        // Anchor on the captured closing `---` itself (group 2), not on an
+        // assumed single-character gap after the content — the gap is `\n`
+        // for an LF-saved fence but `\r\n` for a CRLF-saved one.
+        let closeLine = text.lineRange(for: NSRange(location: match.range(at: 2).location, length: 0))
+        tokens.append(MarkdownToken(
+            type: .frontmatter,
+            range: fullRange,
+            markerRanges: [
+                NSIntersectionRange(openLine, fullRange),
+                NSIntersectionRange(closeLine, fullRange),
+            ]
+        ))
+        frontmatterRanges.append(fullRange)
     }
 
     // MARK: - Line Splitting

@@ -39,6 +39,33 @@ public enum ContentAnalyzer {
         return line
     }
 
+    /// Parse an optional leading frontmatter fence (`---` / `status: <value>` /
+    /// `---`) from the very start of `text`. Returns the extracted status (the
+    /// last `status:` line inside the fence, if any, trimmed) and the
+    /// remaining text with the fence itself removed — callers should derive
+    /// title/tags from the remainder, not the raw text, so a leading `---`
+    /// doesn't become the derived title. Absent, unterminated, or status-less
+    /// frontmatter returns `(nil, text)` unchanged. Deliberately narrow — not
+    /// general YAML — it only recognizes a `status:` key line. Mirrors Rust
+    /// `content::parse_frontmatter_status`.
+    public static func parseFrontmatterStatus(from text: String) -> (status: String?, rest: String) {
+        let normalized = normalizingNewlines(text)
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let first = lines.first, first == "---" else { return (nil, text) }
+
+        var status: String?
+        for (offset, line) in lines.enumerated().dropFirst() {
+            if line == "---" {
+                let rest = lines[(offset + 1)...].joined(separator: "\n")
+                return (status, rest)
+            }
+            if line.hasPrefix("status:") {
+                status = line.dropFirst("status:".count).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return (nil, text) // unterminated fence: treat as if there were none
+    }
+
     public static func extractTags(from text: String) -> [String] {
         let text = normalizingNewlines(text)
         let pattern = "(?<=\\s|^)#([a-zA-Z][a-zA-Z0-9_/]*)"

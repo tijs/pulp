@@ -87,6 +87,49 @@ struct MarkdownTokenizerTests {
         #expect(blocks.count == 1)
     }
 
+    @Test func leadingFrontmatterFenceIsOneToken() {
+        let text = "---\nstatus: active\n---\n# Plan\nbody #tag"
+        let tokens = tokenizer.tokenize(text)
+        let frontmatter = tokens.filter { $0.type == .frontmatter }
+        #expect(frontmatter.count == 1)
+        // No stray horizontal rules for the fence lines, and the heading/tag
+        // after the fence still tokenize normally.
+        #expect(tokens.filter { $0.type == .horizontalRule }.isEmpty)
+        #expect(tokens.contains { if case .heading = $0.type { return true }; return false })
+        #expect(tokens.contains { $0.type == .hashtag })
+    }
+
+    @Test func leadingFrontmatterFenceSurvivesCRLF() {
+        // A CRLF-saved fence must still tokenize as one `.frontmatter` block,
+        // not silently fall back to two horizontal rules (the fence lines'
+        // markerRanges must land on the `---` lines, not one char short/long
+        // because of the extra `\r`).
+        let text = "---\r\nstatus: active\r\n---\r\n# Plan\r\nbody #tag"
+        let tokens = tokenizer.tokenize(text)
+        let frontmatter = tokens.filter { $0.type == .frontmatter }
+        #expect(frontmatter.count == 1)
+        #expect(frontmatter[0].markerRanges.count == 2)
+        #expect(tokens.filter { $0.type == .horizontalRule }.isEmpty)
+        #expect(tokens.contains { if case .heading = $0.type { return true }; return false })
+        #expect(tokens.contains { $0.type == .hashtag })
+    }
+
+    @Test func nonLeadingHorizontalRuleIsNotFrontmatter() {
+        // A `---` fence anywhere but the very start of the document is an
+        // ordinary horizontal rule, not frontmatter.
+        let text = "Some prose\n\n---\n\nMore prose"
+        let tokens = tokenizer.tokenize(text)
+        #expect(tokens.filter { $0.type == .frontmatter }.isEmpty)
+        #expect(tokens.contains { $0.type == .horizontalRule })
+    }
+
+    @Test func unterminatedFrontmatterFenceFallsBackToHorizontalRule() {
+        let text = "---\nstatus: active\nno closing fence"
+        let tokens = tokenizer.tokenize(text)
+        #expect(tokens.filter { $0.type == .frontmatter }.isEmpty)
+        #expect(tokens.contains { $0.type == .horizontalRule })
+    }
+
     @Test func taskItemUnchecked() {
         let tokens = tokenizer.tokenize("- [ ] Buy milk")
         let tasks = tokens.filter { if case .taskItem = $0.type { return true }

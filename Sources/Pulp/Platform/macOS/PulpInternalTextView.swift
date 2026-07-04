@@ -18,6 +18,19 @@ class PulpInternalTextView: NSTextView {
             NSBezierPath(roundedRect: blockRect, xRadius: 8, yRadius: 8).fill()
         }
 
+        // A callout for a leading frontmatter fence (e.g. Kiem's `status:
+        // active`): a tinted background plus a colored left accent bar,
+        // mirroring how note-taking apps (Bear) render a metadata block —
+        // Bear's is a plain blockquote, this achieves the same read for a
+        // fence Pulp doesn't otherwise give any visual treatment.
+        for blockRect in drawingInfo.frontmatterRects where blockRect.intersects(rect) {
+            theme.accentColor.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: blockRect, xRadius: 8, yRadius: 8).fill()
+            theme.accentColor.setFill()
+            let accentBar = NSRect(x: blockRect.minX, y: blockRect.minY, width: 3, height: blockRect.height)
+            NSBezierPath(roundedRect: accentBar, xRadius: 1.5, yRadius: 1.5).fill()
+        }
+
         for table in drawingInfo.tableInfos where table.backgroundRect.intersects(rect) {
             drawTable(table, in: rect)
         }
