@@ -5,6 +5,7 @@ import SwiftUI
 /// A handle a SwiftUI host can hold to drive editor commands (formatting, table
 /// insertion, etc.) from its own chrome — a toolbar, menu, or floating bar. The
 /// editor library stays neutral; the host owns the affordance.
+@MainActor
 public final class PulpEditorController: ObservableObject {
     public weak var editor: PulpEditorProtocol?
     public init() {}
@@ -35,6 +36,7 @@ public final class PulpEditorController: ObservableObject {
         case let .insertTable(rows, columns): editor?.insertTable(rows: rows, columns: columns)
         }
     }
+
     // swiftlint:enable cyclomatic_complexity
 
     /// Insert a blank table at the caret. Defaults to a 3-column, 2-row table.

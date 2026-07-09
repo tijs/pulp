@@ -82,9 +82,12 @@ extension PulpNSTextView {
     /// marker-atom path handled it.
     @discardableResult
     func deleteForTesting(_ direction: DeletionDirection) -> Bool {
-        let handled = textView(textView, doCommandBy: direction == .backward
-            ? #selector(NSResponder.deleteBackward(_:))
-            : #selector(NSResponder.deleteForward(_:)))
+        let handled = textView(
+            textView,
+            doCommandBy: direction == .backward
+                ? #selector(NSResponder.deleteBackward(_:))
+                : #selector(NSResponder.deleteForward(_:))
+        )
         if !handled {
             switch direction {
             case .backward: textView.deleteBackward(nil)

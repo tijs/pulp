@@ -1,12 +1,15 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 
 import PackageDescription
 
 let package = Package(
     name: "PulpEditor",
     platforms: [
-        .macOS(.v14),
-        .iOS(.v17)
+        // Current-generation floors only (macOS 26 / iOS 26): the editor is
+        // TextKit 2-native and tracks modern AppKit/UIKit behavior; there is
+        // no legacy-OS support target.
+        .macOS(.v26),
+        .iOS(.v26)
     ],
     products: [
         .library(name: "Pulp", targets: ["Pulp"])

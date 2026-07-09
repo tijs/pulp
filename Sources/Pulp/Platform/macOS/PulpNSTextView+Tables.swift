@@ -26,15 +26,8 @@ extension PulpNSTextView {
             if case .table = $0.type { return $0.range == tableRange }
             return false
         }) else { return nil }
-        guard let layoutManager = textView.layoutManager, textView.textContainer != nil else { return nil }
-
         let containerOrigin = textView.textContainerOrigin
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: tableToken.range, actualCharacterRange: nil)
-        var unionRect = NSRect.zero
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-            unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
-        }
-        guard unionRect != .zero else { return nil }
+        guard let unionRect = segmentUnionRect(forCharacterRange: tableToken.range) else { return nil }
 
         let tableLeft = containerOrigin.x
         let tableWidth = textView.bounds.width - containerOrigin.x * 2
@@ -137,15 +130,10 @@ extension PulpNSTextView {
     }
 
     func tableRange(matching bgRect: NSRect) -> NSRange? {
-        guard let layoutManager = textView.layoutManager, textView.textContainer != nil else { return nil }
         let containerOrigin = textView.textContainerOrigin
         for token in cachedTokens {
             guard case .table = token.type else { continue }
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
-            var unionRect = NSRect.zero
-            layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-                unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
-            }
+            guard let unionRect = segmentUnionRect(forCharacterRange: token.range) else { continue }
             let top = unionRect.origin.y + containerOrigin.y
             if abs(top - bgRect.minY) < 2 { return token.range }
         }
@@ -277,7 +265,7 @@ extension PulpNSTextView {
 
     //
     // The table cell geometry (hit rects, the in-cell control button) is computed
-    // from NSLayoutManager line fragments, which only exist after a layout pass.
+    // from laid-out text segment frames, which only exist after a layout pass.
     // Synthetic mouse events aren't available in unit tests, so these internal
     // helpers let tests force layout and drive the exact code paths a click takes.
 
@@ -285,9 +273,7 @@ extension PulpNSTextView {
     /// a hosting window, then refresh the drawing info.
     func layoutForTesting(width: CGFloat = 600, height: CGFloat = 2000) {
         textView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        if let container = textView.textContainer {
-            textView.layoutManager?.ensureLayout(for: container)
-        }
+        ensureFullLayout()
         updateDrawingInfo()
     }
 
@@ -392,18 +378,9 @@ extension PulpNSTextView {
         return TableCellParser.measureColumnWidths(rows: rows, font: font, padding: 28)
     }
 
-    func tableDrawingInfo(
-        for token: MarkdownToken,
-        layoutManager: NSLayoutManager,
-        containerOrigin: NSPoint
-    ) -> DrawingInfo.TableInfo? {
+    func tableDrawingInfo(for token: MarkdownToken, containerOrigin: NSPoint) -> DrawingInfo.TableInfo? {
         // Exact bounding rect (no extra padding) so rows divide evenly.
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
-        var unionRect = NSRect.zero
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-            unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
-        }
-        guard unionRect != .zero else { return nil }
+        guard let unionRect = segmentUnionRect(forCharacterRange: token.range) else { return nil }
         let bgRect = NSRect(
             x: containerOrigin.x,
             y: unionRect.origin.y + containerOrigin.y,

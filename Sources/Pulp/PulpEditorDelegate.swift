@@ -1,5 +1,7 @@
 import Foundation
 
+/// Editor callbacks fire from view/layout work, always on the main actor.
+@MainActor
 public protocol PulpEditorDelegate: AnyObject {
     func editor(_ editor: PulpEditorProtocol, didApplyEdit edit: TextEdit)
     func editor(_ editor: PulpEditorProtocol, didUpdateTitle title: String)

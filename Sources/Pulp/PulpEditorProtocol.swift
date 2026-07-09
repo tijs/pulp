@@ -1,5 +1,7 @@
 import Foundation
 
+/// The editor surface is UI: every requirement reads or drives view state.
+@MainActor
 public protocol PulpEditorProtocol: AnyObject {
     var delegate: PulpEditorDelegate? { get set }
     var text: String { get }

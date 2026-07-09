@@ -303,16 +303,12 @@ class PulpInternalTextView: NSTextView {
         for item in drawingInfo.checkboxItems {
             let hitArea = item.rect.insetBy(dx: -4, dy: -4)
             if hitArea.contains(point) {
-                if let layoutManager, let textContainer {
-                    let textPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
-                    let charIndex = layoutManager.characterIndex(
-                        for: textPoint,
-                        in: textContainer,
-                        fractionOfDistanceBetweenInsertionPoints: nil
-                    )
-                    parent.toggleCheckbox(at: charIndex)
-                    return
-                }
+                // Stack-agnostic point→index (never touch `layoutManager`: on a
+                // TextKit 2 view that getter downgrades the whole view to the
+                // TextKit 1 compatibility stack).
+                let charIndex = min(characterIndexForInsertion(at: point), (string as NSString).length)
+                parent.toggleCheckbox(at: charIndex)
+                return
             }
         }
 

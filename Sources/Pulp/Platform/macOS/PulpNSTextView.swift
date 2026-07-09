@@ -82,7 +82,9 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
 
-        textView = PulpInternalTextView()
+        // The plain NSTextView() initializer builds a legacy TextKit 1 stack;
+        // TextKit 2 (NSTextLayoutManager) must be asked for explicitly.
+        textView = PulpInternalTextView(usingTextLayoutManager: true)
         textView.isRichText = false
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -119,6 +121,18 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
 
     override public func layout() {
         super.layout()
+        // Keep the document view's width pinned to the clip view. Nothing else
+        // guarantees it: the text view is created at frame .zero, and AppKit
+        // only grows a scroll view's document view by autoresizing/min-max
+        // bookkeeping that we configure below. Before this existed the editor
+        // could come up with a 0pt-wide document view — the whole note laid
+        // out in a zero-width column and the pane drew blank while the text
+        // was demonstrably present (recurring Kiem "note won't open" bug,
+        // root-caused 2026-07-09). Explicit sync makes it deterministic.
+        let clipWidth = scrollView.contentSize.width
+        if textView.frame.width != clipWidth {
+            textView.setFrameSize(NSSize(width: clipWidth, height: textView.frame.height))
+        }
         updateDrawingInfo()
     }
 
@@ -128,6 +142,14 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainerInset = NSSize(width: 40, height: 20)
+        // Canonical NSTextView-in-NSScrollView sizing ("Putting an NSTextView
+        // Object in an NSScrollView"): an NSTextView initialized at .zero
+        // inherits maxSize == .zero, which clamps every later resize attempt,
+        // and without an autoresizing mask the clip view never propagates its
+        // width. Both must be set explicitly.
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
     }
 
     // MARK: - Public API
@@ -210,7 +232,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
+            {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -305,8 +328,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
     private static let checkboxTextGap: CGFloat = 5
 
     func updateDrawingInfo() {
-        guard let layoutManager = textView.layoutManager,
-              textView.textContainer != nil else { return }
+        // Lay the whole document out first: TextKit 2 estimates the height of
+        // fragments it hasn't laid out yet, so a rect measured against a
+        // partially laid-out document drifts once scrolling refines the
+        // estimates (backgrounds land lines away from their text). Kiem-sized
+        // notes lay out in well under a frame, so eager layout is the boring,
+        // correct trade.
+        ensureFullLayout()
 
         var info = DrawingInfo()
         info.theme = theme
@@ -315,19 +343,19 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for token in cachedTokens {
             switch token.type {
             case .codeBlock:
-                if let rect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if let rect = codeBlockRect(for: token, containerOrigin: containerOrigin) {
                     info.codeBlockRects.append(rect)
                 }
             case .frontmatter:
-                if let rect = codeBlockRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if let rect = codeBlockRect(for: token, containerOrigin: containerOrigin) {
                     info.frontmatterRects.append(rect)
                 }
             case .horizontalRule:
-                if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if let rect = tokenLineRect(for: token, containerOrigin: containerOrigin) {
                     info.horizontalRuleRects.append(NSRect(x: 0, y: rect.origin.y, width: textView.bounds.width, height: rect.height))
                 }
             case .listItem:
-                if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if let rect = tokenLineRect(for: token, containerOrigin: containerOrigin) {
                     // Sit the glyph in the margin just left of the text indent so
                     // nested bullets align under their text at every depth. The x
                     // is `textIndent - (glyph width + gap)`, derived from the same
@@ -344,7 +372,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                     ))
                 }
             case let .taskItem(checked):
-                if let rect = lineRect(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if let rect = tokenLineRect(for: token, containerOrigin: containerOrigin) {
                     let textIndent = MarkdownStyler.listIndent(depth: token.indentDepth)
                     let x = containerOrigin.x + textIndent - (Self.checkboxSize + Self.checkboxTextGap)
                     info.checkboxItems.append(.init(
@@ -357,7 +385,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                     ))
                 }
             case .table:
-                if var tableInfo = tableDrawingInfo(for: token, layoutManager: layoutManager, containerOrigin: containerOrigin) {
+                if var tableInfo = tableDrawingInfo(for: token, containerOrigin: containerOrigin) {
                     // Suppress the rendered text of the cell currently being edited.
                     if let ctx = cellEditContext, ctx.tableRange == token.range {
                         tableInfo.editingCell = (displayRow: ctx.rowIndex < 0 ? 0 : ctx.rowIndex + 1, column: ctx.columnIndex)
@@ -375,19 +403,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         textView.needsDisplay = true
     }
 
-    private func codeBlockRect(
-        for token: MarkdownToken,
-        layoutManager: NSLayoutManager,
-        containerOrigin: NSPoint
-    ) -> NSRect? {
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
-        var unionRect = NSRect.zero
-
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, _, _, _, _ in
-            unionRect = unionRect == .zero ? lineRect : unionRect.union(lineRect)
-        }
-
-        guard unionRect != .zero else { return nil }
+    private func codeBlockRect(for token: MarkdownToken, containerOrigin: NSPoint) -> NSRect? {
+        guard let unionRect = segmentUnionRect(forCharacterRange: token.range) else { return nil }
         let padding: CGFloat = 8
         return NSRect(
             x: containerOrigin.x,
@@ -397,16 +414,8 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         )
     }
 
-    private func lineRect(
-        for token: MarkdownToken,
-        layoutManager: NSLayoutManager,
-        containerOrigin: NSPoint
-    ) -> NSRect? {
-        let glyphRange = layoutManager.glyphRange(
-            forCharacterRange: NSRange(location: token.range.location, length: 1),
-            actualCharacterRange: nil
-        )
-        let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+    private func tokenLineRect(for token: MarkdownToken, containerOrigin: NSPoint) -> NSRect? {
+        guard let rect = lineRect(forCharacterAt: token.range.location) else { return nil }
         return NSRect(
             x: rect.origin.x + containerOrigin.x,
             y: rect.origin.y + containerOrigin.y,
@@ -450,13 +459,15 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+        {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
@@ -467,7 +478,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
 
 // MARK: - NSTextStorageDelegate
 
-extension PulpNSTextView: NSTextStorageDelegate {
+extension PulpNSTextView: @MainActor NSTextStorageDelegate {
     public func textStorage(
         _ textStorage: NSTextStorage,
         didProcessEditing editedMask: NSTextStorageEditActions,

@@ -17,9 +17,9 @@ struct DrawingInfo {
         /// The glyph for a given nesting depth (depth 0 = filled dot).
         static func forDepth(_ depth: Int) -> BulletStyle {
             switch max(0, depth) % 3 {
-            case 1: return .ring
-            case 2: return .diamond
-            default: return .filledDot
+            case 1: .ring
+            case 2: .diamond
+            default: .filledDot
             }
         }
     }
@@ -66,6 +66,6 @@ struct DrawingInfo {
     var tableControl: TableControl?
     var theme: PulpTheme = .default
 
-    static let empty = DrawingInfo()
+    @MainActor static let empty = DrawingInfo()
 }
 #endif
