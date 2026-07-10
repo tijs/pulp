@@ -270,10 +270,10 @@ extension PulpNSTextView {
     // helpers let tests force layout and drive the exact code paths a click takes.
 
     /// Force a layout pass at a fixed size so table geometry is computed without
-    /// a hosting window, then refresh the drawing info.
+    /// a hosting window, then refresh the drawing info (which itself lays out
+    /// the full document first).
     func layoutForTesting(width: CGFloat = 600, height: CGFloat = 2000) {
         textView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        ensureFullLayout()
         updateDrawingInfo()
     }
 

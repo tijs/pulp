@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 **Pulp** is a standalone, open-source Swift package: an inline Markdown editor built on
-**TextKit 1**. It is deliberately self-contained — no dependency on Rust, on Kiem, or on
+**TextKit 2** (`NSTextLayoutManager`). It is deliberately self-contained — no dependency on Rust, on Kiem, or on
 any other app. Kiem (the sibling `../kiem-app` repo) is its first consumer, but Pulp must
 stay independently shippable, so nothing Kiem-specific belongs in `Sources/Pulp`.
 
@@ -58,7 +58,11 @@ offset, so any new token must carry its ranges through that shift.
 Public API surface: `PulpEditorProtocol`, `PulpEditorDelegate`, `PulpTheme`, `PulpPalette`,
 `TextEdit`. `ContentAnalyzer` derives title/tags/todos (see contract below).
 
-Platform: macOS (TextKit 1 / AppKit) is implemented; an iOS UITextView port is pending.
+Platform: macOS (TextKit 2 / AppKit) is implemented; an iOS UITextView port is pending.
+Floors are current-generation only (macOS 26 / iOS 26), Swift 6 language mode; the
+editor-facing protocols and `PulpEditorController` are `@MainActor`. Never touch
+`textView.layoutManager` — its getter silently downgrades the view to a TextKit 1
+compatibility stack; all geometry goes through `PulpNSTextView+TextKitGeometry.swift`.
 New rendering/UI code is macOS-specific and lives under `Platform/macOS/`; keep
 platform-agnostic logic (parsing, styling-run computation) out of it so the iOS port can
 reuse it. Guard AppKit-only APIs with `#if canImport(AppKit)` / `#elseif canImport(UIKit)`.
