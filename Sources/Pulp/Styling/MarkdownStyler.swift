@@ -68,11 +68,11 @@ public final class MarkdownStyler {
 
         case .frontmatter:
             // Muted, slightly smaller text for the whole block; the fence
-            // lines themselves are then hidden by `markerRuns` (mirrors
-            // `.codeBlock`). The callout background/accent bar is drawn
-            // separately (`DrawingInfo.frontmatterRects`), not via attributes.
+            // lines themselves are then collapsed to slivers by `markerRuns`.
+            // The callout background/accent bar is drawn separately
+            // (`DrawingInfo.frontmatterRects`), not via attributes.
             let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.paragraphSpacing = theme.bodySize * 0.3
+            paragraphStyle.paragraphSpacing = 0
             return [StyleRun(
                 range: token.range,
                 attributes: [
@@ -429,18 +429,42 @@ public final class MarkdownStyler {
         return runs
     }
 
+    /// Sliver-height paragraph for the hidden `---` fence lines of a
+    /// frontmatter block (see the `.frontmatter` marker case). Built per call:
+    /// `NSParagraphStyle` isn't `Sendable`, so a shared static trips Swift 6.
+    private static func collapsedFenceStyle() -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.maximumLineHeight = 4
+        style.paragraphSpacing = 0
+        return style
+    }
+
     private func markerRuns(for token: MarkdownToken) -> [StyleRun] {
         switch token.type {
         case .listItem, .taskItem, .orderedListItem, .horizontalRule,
              .table, .tableHeaderRow, .tableDataRow, .tableSeparatorRow:
             []
-        case .codeBlock, .frontmatter:
+        case .codeBlock:
             token.markerRanges.map { markerRange in
                 StyleRun(
                     range: markerRange,
                     attributes: [
                         .font: theme.codeFont(),
                         .foregroundColor: PulpColor.clear,
+                    ]
+                )
+            }
+        case .frontmatter:
+            // Collapsed, not just cleared: an invisible glyph still holds its
+            // full line height, and two empty full-height lines turn the
+            // metadata callout into a mostly-empty box.
+            token.markerRanges.map { markerRange in
+                StyleRun(
+                    range: markerRange,
+                    attributes: [
+                        .font: PulpFont.systemFont(ofSize: 4),
+                        .foregroundColor: PulpColor.clear,
+                        .paragraphStyle: Self.collapsedFenceStyle(),
                     ]
                 )
             }

@@ -45,5 +45,25 @@ struct EditorLayoutTests {
         #expect(view.textView.maxSize.width == CGFloat.greatestFiniteMagnitude)
         #expect(view.textView.textContainer?.widthTracksTextView == true)
     }
+
+    /// The frontmatter callout is a compact chip hugging the `key: value`
+    /// content — regression for the first cut, whose box unioned the (hidden
+    /// but full-height) `---` fence lines and spanned the container width:
+    /// a one-line `status: active` rendered as a giant, mostly-empty banner.
+    @Test func frontmatterCalloutHugsItsContent() {
+        let view = PulpNSTextView()
+        view.setText("---\nstatus: active\n---\nPlan: something\n\nBody text.")
+        view.layoutForTesting()
+
+        let chips = view.frontmatterRectsForTesting
+        #expect(chips.count == 1)
+        guard let chip = chips.first else { return }
+
+        // One visible line plus padding — nowhere near three lines tall.
+        let lineHeight = view.theme.bodyFont().boundingRectForFont.height
+        #expect(chip.height < lineHeight * 2)
+        // Hugs the short text, doesn't span the 600pt-wide container.
+        #expect(chip.width < 300)
+    }
 }
 #endif

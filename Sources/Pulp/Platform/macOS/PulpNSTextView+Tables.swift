@@ -297,6 +297,11 @@ extension PulpNSTextView {
         textView.drawingInfo.tableControl
     }
 
+    /// Frontmatter callout chips currently laid out (for geometry tests).
+    var frontmatterRectsForTesting: [NSRect] {
+        textView.drawingInfo.frontmatterRects
+    }
+
     /// Whether an inline cell editor field is currently open.
     var hasActiveCellEditor: Bool {
         cellEditor != nil

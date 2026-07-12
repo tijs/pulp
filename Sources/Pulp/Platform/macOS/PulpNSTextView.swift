@@ -232,8 +232,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         for run in styler.styleRuns(for: cachedTokens) {
             guard NSIntersectionRange(run.range, fullRange).length == run.range.length else { continue }
             if NSIntersectionRange(run.range, paraRange).length > 0 ||
-                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length
-            {
+                run.range.location >= paraRange.location && run.range.location < paraRange.location + paraRange.length {
                 textStorage.addAttributes(run.attributes, range: run.range)
             }
         }
@@ -347,7 +346,7 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
                     info.codeBlockRects.append(rect)
                 }
             case .frontmatter:
-                if let rect = codeBlockRect(for: token, containerOrigin: containerOrigin) {
+                if let rect = frontmatterRect(for: token, containerOrigin: containerOrigin) {
                     info.frontmatterRects.append(rect)
                 }
             case .horizontalRule:
@@ -414,6 +413,27 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         )
     }
 
+    /// The frontmatter callout hugs the visible `key: value` lines — a compact
+    /// metadata chip, not a container-wide banner. The `---` fence lines are
+    /// excluded: they're collapsed to slivers by the styler, and measuring them
+    /// would only pad the chip with dead space.
+    private func frontmatterRect(for token: MarkdownToken, containerOrigin: NSPoint) -> NSRect? {
+        guard token.markerRanges.count == 2 else { return nil }
+        let start = token.markerRanges[0].upperBound
+        let end = token.markerRanges[1].lowerBound
+        guard end > start,
+              let unionRect = segmentUnionRect(forCharacterRange: NSRange(location: start, length: end - start))
+        else { return nil }
+        let hPadding: CGFloat = 10
+        let vPadding: CGFloat = 5
+        return NSRect(
+            x: unionRect.origin.x + containerOrigin.x - hPadding,
+            y: unionRect.origin.y + containerOrigin.y - vPadding,
+            width: unionRect.width + hPadding * 2,
+            height: unionRect.height + vPadding * 2
+        )
+    }
+
     private func tokenLineRect(for token: MarkdownToken, containerOrigin: NSPoint) -> NSRect? {
         guard let rect = lineRect(forCharacterAt: token.range.location) else { return nil }
         return NSRect(
@@ -459,15 +479,13 @@ public final class PulpNSTextView: NSView, PulpEditorProtocol {
         let line = string.substring(with: lineRange)
 
         if let regex = try? NSRegularExpression(pattern: "- \\[ \\]"),
-           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+           let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [x]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
             delegate?.editor(self, didToggleCheckboxAtLine: lineNum, checked: true)
         } else if let regex = try? NSRegularExpression(pattern: "- \\[[xX]\\]"),
-                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
-        {
+                  let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
             let replaceRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
             textView.insertText("- [ ]", replacementRange: replaceRange)
             let lineNum = string.substring(to: lineRange.location).components(separatedBy: "\n").count - 1
